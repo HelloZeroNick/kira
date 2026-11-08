@@ -11,6 +11,22 @@
     {
       "name": "EntryAbility_label",
       "value": "kira"
+    },
+    {
+      "name": "network_info_reason",
+      "value": "Used to show the current network type in the reader status bar."
+    },
+    {
+      "name": "keep_background_running_reason",
+      "value": "Used to keep downloads running when the app is in the background."
+    },
+    {
+      "name": "write_imagevideo_reason",
+      "value": "Used to save images from the reader to your gallery."
+    },
+    {
+      "name": "read_pasteboard_reason",
+      "value": "Used to detect a shared comic link on the clipboard so it can be opened."
     }
   ]
 }

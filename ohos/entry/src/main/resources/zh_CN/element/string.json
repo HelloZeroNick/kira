@@ -11,6 +11,22 @@
     {
       "name": "EntryAbility_label",
       "value": "kira"
+    },
+    {
+      "name": "network_info_reason",
+      "value": "用于在阅读器状态栏显示当前网络类型。"
+    },
+    {
+      "name": "keep_background_running_reason",
+      "value": "用于在应用切到后台时继续下载。"
+    },
+    {
+      "name": "write_imagevideo_reason",
+      "value": "用于把阅读器中的图片保存到相册。"
+    },
+    {
+      "name": "read_pasteboard_reason",
+      "value": "用于识别剪贴板中的分享链接并直接打开。"
     }
   ]
 }

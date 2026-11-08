@@ -1,4 +1,3 @@
-
 {
   "module": {
     "name": "entry",
@@ -8,6 +7,7 @@
     "deviceTypes": [
       "phone"
     ],
+    "compressNativeLibs": true,
     "deliveryWithInstall": true,
     "installationFree": false,
     "pages": "$profile:main_pages",
@@ -34,7 +34,54 @@
       }
     ],
     "requestPermissions": [
-      {"name" :  "ohos.permission.INTERNET"},
+      // 网络：API 请求、图片/压缩包下载（system_grant，无需 reason）。
+      {
+        "name": "ohos.permission.INTERNET"
+      },
+      // connectivity_plus 读取当前网络类型；阅读器状态栏用它区分 Wi-Fi/移动网络。
+      {
+        "name": "ohos.permission.GET_NETWORK_INFO",
+        "reason": "$string:network_info_reason",
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "inuse"
+        }
+      },
+      // flutter_foreground_task：后台下载长时任务。
+      {
+        "name": "ohos.permission.KEEP_BACKGROUND_RUNNING",
+        "reason": "$string:keep_background_running_reason",
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "inuse"
+        }
+      },
+      // gal：把阅读器里的图片存进相册（用户主动保存时申请）。
+      {
+        "name": "ohos.permission.WRITE_IMAGEVIDEO",
+        "reason": "$string:write_imagevideo_reason",
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "inuse"
+        }
+      },
+      // 回到前台时读取剪贴板里的分享链接（自动检测开关可关闭）。
+      {
+        "name": "ohos.permission.READ_PASTEBOARD",
+        "reason": "$string:read_pasteboard_reason",
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "inuse"
+        }
+      }
     ]
   }
 }
