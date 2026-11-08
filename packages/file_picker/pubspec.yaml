@@ -1,0 +1,19 @@
+# 鸿蒙适配：参照 PiliPlus 的做法，用一个本地 shim 包把 `package:file_picker`
+# 指向 file_picker_ohos 的实现，从而让 root 的 `file_picker: {path: packages/file_picker}`
+# 在鸿蒙上解析到带 ohos 平台实现的版本。
+name: file_picker
+description: A Flutter plugin that allows you to pick single or multiple absolute file paths, with extensions filtering support.
+version: 10.3.8
+publish_to: none
+
+environment:
+  sdk: '>=3.11.0 <4.0.0'
+  flutter: ">=2.5.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  file_picker_ohos:
+    git:
+      url: https://gitcode.com/hellozeronick/fluttertpc_file_picker.git
+      ref: br_v10.3.8_ohos
