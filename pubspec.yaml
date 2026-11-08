@@ -24,10 +24,10 @@ dependencies:
       ref: br_shared_preferences-v2.5.4_ohos
   package_info_plus: ^10.1.0
   path: ^1.9.1
-  # 鸿蒙适配：openharmony-sig 分支，版本仍是 2.1.5。
+  # 鸿蒙适配：CPF-Flutter 分支，版本仍是 2.1.5。
   path_provider:
     git:
-      url: https://gitcode.com/openharmony-sig/flutter_packages.git
+      url: https://gitcode.com/CPF-Flutter/flutter_packages.git
       path: packages/path_provider/path_provider
       ref: br_path_provider-v2.1.5_ohos
   # 鸿蒙适配：与 fqapp、PiliPlus 相同的 fork 与分支。
@@ -105,11 +105,11 @@ dependency_overrides:
       ref: br_v6.1.5_ohos_dev
   path_provider:
     git:
-      url: https://atomgit.com/openharmony-tpc/flutter_packages.git
+      url: https://atomgit.com/CPF-Flutter/flutter_packages.git
       path: packages/path_provider/path_provider
   sqflite:
     git:
-      url: https://gitcode.com/openharmony-sig/flutter_sqflite.git
+      url: https://gitcode.com/CPF-Flutter/flutter_sqflite.git
   package_info_plus:
     git:
       url: https://gitcode.com/CPF-Flutter/flutter_plus_plugins.git
