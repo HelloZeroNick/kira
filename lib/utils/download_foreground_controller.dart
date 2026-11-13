@@ -322,6 +322,10 @@ class FlutterForegroundTaskGateway implements DownloadForegroundGateway {
         eventAction: ForegroundTaskEventAction.nothing(),
         allowWifiLock: true,
       ),
+      // 鸿蒙选项
+      ohosNotificationOptions: OhosNotificationOptions(
+        isAlertOnce: true,
+      ),
     );
     _optionsReady = true;
   }
