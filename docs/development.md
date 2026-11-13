@@ -39,21 +39,10 @@ flutter run -d <设备ID>
 
 ## 鸿蒙构建
 
-首次构建前先用 DevEco Studio 打开 `ohos/` 工程，`File` → `Project Structure` → `Signing Configs` 勾选 `Automatically generate signature`；`ohos/build-profile.json5` 的 `signingConfigs` 入库时为空数组，签名材料不入库。`ohos/local.properties` 由 flutter 自动生成，不要手写。
-
-```sh
-flutter build hap --release --target-platform ohos-arm64
-```
-
-`--target-platform` 可选 `ohos-arm64`（默认）、`ohos-arm`、`ohos-x64`；无签名材料的环境加 `--no-codesign`。产物在 `build/ohos/hap/`（`entry-default-signed.hap` 或 `entry-default-unsigned.hap`）。设备用 `flutter devices`（ID 形如 `192.168.1.199:46992`）或 `hdc list targets` 查看，安装用 `flutter run -d <设备ID>` 或 `hdc install <hap 路径>`。
+鸿蒙平台的构建、签名、调试、CI 与常见问题单独成文，见 [鸿蒙开发指南](harmonyos.md)。
 
 ## 发布
 
-CI 只构建鸿蒙（`.github/workflows/ohos.yml`），不再有 Android / Windows 的 Actions 构建：
-
-- 推 `v*` tag：构建鸿蒙 arm64 HAP，并创建/更新对应 GitHub Release，把 `kira-<pubspec 版本>-ohos-arm64-unsigned.hap` 作为 Release 资产上传。应用内「检查更新」从 `HelloZeroNick/kira` 的 Release 取包。
-- 手动 dispatch：`tag_name` 留空只产出 Actions artifact；填了版本号才创建 Release。
-
-CI 以 `--no-codesign` 构建，产物未签名，安装或分发前需用 DevEco Studio 完成签名。发布内容的人工确认仍走项目 [`/release` skill](../.claude/skills/release/SKILL.md)。
+CI 只构建鸿蒙，发布流程见 [鸿蒙开发指南](harmonyos.md) 的「发布」一节。发布内容的人工确认仍走项目 [`/release` skill](../.claude/skills/release/SKILL.md)。
 
 [`release.json` 发布清单](release-manifest.md) 协议与脚本仍在仓库中，但当前没有工作流会生成它。

@@ -98,6 +98,7 @@ git diff --exit-code -- pubspec.lock
 | 修改轻小说功能、阅读/鉴权/下载交互 | `docs/novel.md` |
 | 新建/抽取复用组件 | `docs/widgets.md` |
 | 修改存储、备份或恢复 | `docs/persistence-and-cache.md` |
+| 鸿蒙构建、签名、HAP、hdc 调试、ohos CI 或鸿蒙侧报错 | `docs/harmonyos.md` |
 | Windows/Android 构建报错、改 `windows/CMakeLists.txt`、添加媒体依赖 | `docs/platform-build.md` |
 
 - 文档引用代码用「文件路径 + 符号名」，不写行号；行号随重构漂移，过期后反而误导。

@@ -1,49 +1,10 @@
-<h1 align="center">
-	<img src="assets\ic_launcher.png" style="zoom: 33%;" />
-</h1>
-
-<p align="center"><strong>kira 鸿蒙版（HarmonyOS / OpenHarmony）</strong></p>
-
-本分支是 [caolib/kira](https://github.com/caolib/kira) 的鸿蒙 Flutter 移植分支，仓库托管在
-[HelloZeroNick/kira](https://github.com/HelloZeroNick/kira) 的 `ohos` 分支。
-
-> [!WARNING]
-> 本分支只做一件事：把 kira 客户端适配到鸿蒙。
->
-> - 产品功能、界面与行为以 [上游仓库](https://github.com/caolib/kira) 为准，鸿蒙侧不新增产品功能、不改变上游行为；
-> - 除鸿蒙平台相关内容（`ohos/` 平台目录与鸿蒙构建产物）之外，其余代码应尽量与上游保持一致，以便后续继续同步上游；
-> - 目前仅保证 HarmonyOS 目标可编译、可运行到主要流程（漫画、轻小说）。
-
-## 提 issue 注意事项
-
-- 请先查看[是否已存在类似 issue](https://github.com/HelloZeroNick/kira/issues?q=is%3Aissue)，
-  并确保问题属于**鸿蒙版特有问题**（即上游/Android 版本没有该问题）。
-- 与鸿蒙无关的功能问题请提到 [上游仓库](https://github.com/caolib/kira)。
-
-## 编译运行
-
-1. 使用鸿蒙 Flutter SDK：[CPF-Flutter/flutter_flutter](https://gitcode.com/CPF-Flutter/flutter_flutter) 的 `oh-3.47.9-dev` 分支，本机 `flutter --version` 为 `3.47.7+ohos-0.0.1-canary`。
-2. 安装 DevEco Studio 与 HarmonyOS SDK（本机为 API 26），并把 SDK 路径配置到 `DEVECO_SDK_HOME` 环境变量。
-3. 安装依赖并构建 HAP：
-
-   ```sh
-   flutter pub get --enforce-lockfile
-   flutter build hap --release --target-platform ohos-arm64
-   ```
-
-   产物在 `build/ohos/hap/`：`entry-default-signed.hap`（已签名）或 `entry-default-unsigned.hap`（未签名）。`--target-platform` 可选 `ohos-arm64`（默认）、`ohos-arm`、`ohos-x64`。
-4. 首次构建前先在 DevEco Studio 中打开 `ohos/` 工程，`File` → `Project Structure` → `Signing Configs` 勾选 `Automatically generate signature`。未配置签名时 `flutter build hap` 会提示「请通过DevEco Studio打开ohos工程后配置调试签名」。`ohos/build-profile.json5` 的 `signingConfigs` 入库时为空数组，签名材料不入库；CI 等无签名材料的环境改用 `flutter build hap --no-codesign`。
-5. 运行：`flutter devices` 列出 ohos 设备（ID 形如 `192.168.1.199:46992`）后执行 `flutter run -d <设备ID>`；也可用 `hdc list targets` 查看设备、`hdc install <hap 路径>` 直接安装。
-
-`ohos/local.properties` 由 flutter 自动生成（含 `hwsdk.dir`、`flutter.sdk`、`flutter.versionName`、`flutter.versionCode`），不要手写。不要设置 `PUB_HOSTED_URL`。
-
-## 发布
-
-CI 只构建鸿蒙：推 `v*` tag 或手动触发 `Build HarmonyOS (ohos)` 工作流，构建 arm64 HAP 并创建/更新 GitHub Release，把 `kira-<版本>-ohos-arm64-unsigned.hap` 作为 Release 资产提供（应用内检查更新从这里取包）。CI 产物未签名，安装前需用 DevEco Studio 签名。
-
 <p align="center">
-  <img src="https://skills.syvixor.com/api/icons?perline=15&i=flutter,dart,materialdesign,android,windows"/>
+  <img src="assets/ic_launcher.png" width="120" alt="Kira"/>
 </p>
+
+<h1 align="center">Kira · 鸿蒙版</h1>
+
+<p align="center">拷贝漫画、热辣漫画的第三方客户端，同时支持轻小说</p>
 
 <p align="center">
   <img alt="GitHub License" src="https://img.shields.io/github/license/HelloZeroNick/kira">
@@ -53,13 +14,50 @@ CI 只构建鸿蒙：推 `v*` tag 或手动触发 `Build HarmonyOS (ohos)` 工�
   <a href="https://qm.qq.com/q/rezw7xWuK4"><img src="https://img.shields.io/badge/%E4%BA%A4%E6%B5%81%E7%BE%A4-white?logo=QQ" alt="QQ Group"/></a>
 </p>
 
-## 简介
+<p align="center">
+  <a href="https://github.com/HelloZeroNick/kira/releases/latest"><strong>⬇️ 下载鸿蒙版（.hap）</strong></a>
+</p>
 
-一个拷贝漫画、热辣漫画的第三方客户端，支持漫画、轻小说
+> **本项目是非官方第三方客户端，与漫画平台无关联。** 请先阅读应用内的免责声明再使用。
+>
+> 本仓库是 [caolib/kira](https://github.com/caolib/kira) 的鸿蒙移植分支；产品功能与上游一致，鸿蒙侧只做平台适配。
+
+## 特色
+
+- **漫画 + 轻小说**：一个应用读完两种内容，各自独立的书架与阅读器。
+- **阅读体验可调**：翻页 / 滚动、连续阅读、长按放大、自动滚动；小说可调字号、行距、段距、字体与阅读主题。
+- **离线可用**：漫画按章节、小说按分卷下载到本地。
+- **进度不丢**：自动记录阅读位置，随时从上次的地方继续。
+- **隐私优先**：账号与偏好保存在本机；备份支持本地文件或你自己的 WebDAV，并可加密。
+- **自带 AI 配置**：接入你自己的 AI 服务，用于章节总结等辅助功能。
+
+## 功能
+
+**漫画**
+
+- 首页推荐、分类浏览、排行榜（总榜 / 男生 / 女生 / 主题 / 作者）
+- 搜索、详情、章节列表与评论区
+- 阅读器：翻页 / 滚动模式、连续阅读、长按放大、自动滚动、亮度与留白调节
+- 收藏到书架、阅读进度续读、书签、浏览历史
+- 下载到本地离线阅读，支持批量下载与下载中心管理
+
+**轻小说**
+
+- 独立的小说首页、书架、搜索与分类筛选
+- 阅读器：字号 / 行距 / 段距 / 正文宽度 / 字体，阅读主题（纸张 / 夜间 / 白底 / 护眼绿 / 灰，可自定义配色）
+- 仿真翻页、专注模式、阅读时屏幕常亮
+- 收藏、书签、阅读记录，分卷离线下载
+
+**通用**
+
+- 深色模式、多套主题配色、可更换应用图标
+- 阅读统计（阅读时长与达成情况）
+- 备份与恢复：本地文件或 WebDAV，支持备份加密
+- 通知中心、日志导出、镜像源选择
+
+## 截图
 
 [![](https://files.seeusercontent.com/2026/11/06/bGa0/20261106180342267.png)](https://kirakira.dpdns.org/)
-
-
 
 <details>
   <summary>查看更多截图</summary>
@@ -75,9 +73,31 @@ CI 只构建鸿蒙：推 `v*` tag 或手动触发 `Build HarmonyOS (ohos)` 工�
 </table>
 </details>
 
+## 下载与安装
+
+在 [Releases](https://github.com/HelloZeroNick/kira/releases/latest) 下载最新的
+`kira-<版本>-ohos-arm64-unsigned.hap`（仅 arm64）。
+
+CI 产物为 **release 模式、未签名** 的 HAP（不持有签名材料），无法直接安装到正式设备。
+需要用 DevEco Studio 打开 `ohos/` 工程完成签名，再执行：
+
+```sh
+hdc install <hap 路径>
+```
+
 ## 开发
 
-[开发指南](docs/development.md)
+开发和构建说明集中在次级文档：
+
+- [鸿蒙开发指南](docs/harmonyos.md) —— 鸿蒙环境、HAP 构建、签名、调试、CI 与常见问题
+- [开发指南](docs/development.md) —— 通用开发约定
+- [架构说明](docs/architecture.md)、[轻小说](docs/novel.md)、[组件](docs/widgets.md)、
+  [持久化与缓存](docs/persistence-and-cache.md)、[平台构建](docs/platform-build.md)
+
+## 反馈
+
+- 鸿蒙版特有问题 → [HelloZeroNick/kira/issues](https://github.com/HelloZeroNick/kira/issues)
+- 与鸿蒙无关的功能问题 → [上游 caolib/kira](https://github.com/caolib/kira/issues)
 
 ## 感谢
 
