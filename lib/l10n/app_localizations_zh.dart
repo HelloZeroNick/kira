@@ -1588,7 +1588,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aboutBetaChannelNote => '预览版更新更快，问题也可能更多';
 
   @override
-  String get aboutBetaChannelArm64Only => '仅限 Android arm64 设备。';
+  String get aboutBetaChannelArm64Only => '仅限 Android arm64 与鸿蒙 arm64 设备。';
 
   @override
   String aboutBetaChannelDevice(String os, String arch) {
@@ -1599,7 +1599,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aboutWebsiteLabel => '官网';
 
   @override
-  String get aboutRepositoryLabel => '源代码';
+  String get aboutRepositoryLabel => '源代码（鸿蒙版）';
+
+  @override
+  String get aboutRepositorySubtitle => 'github.com/HelloZeroNick/kira';
+
+  @override
+  String get aboutUpstreamRepositoryLabel => '上游源代码';
+
+  @override
+  String get aboutUpstreamRepositorySubtitle => 'github.com/caolib/kira';
 
   @override
   String get aboutOpenLinkFailed => '无法打开链接，请稍后重试';
@@ -5639,7 +5648,7 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get aboutBetaChannelNote => '預覽版更新更快，問題也可能更多';
 
   @override
-  String get aboutBetaChannelArm64Only => '僅限 Android arm64 裝置。';
+  String get aboutBetaChannelArm64Only => '僅限 Android arm64 與鴻蒙 arm64 裝置。';
 
   @override
   String aboutBetaChannelDevice(String os, String arch) {
@@ -5650,7 +5659,16 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
   String get aboutWebsiteLabel => '官網';
 
   @override
-  String get aboutRepositoryLabel => '原始碼';
+  String get aboutRepositoryLabel => '原始碼（鴻蒙版）';
+
+  @override
+  String get aboutRepositorySubtitle => 'github.com/HelloZeroNick/kira';
+
+  @override
+  String get aboutUpstreamRepositoryLabel => '上游原始碼';
+
+  @override
+  String get aboutUpstreamRepositorySubtitle => 'github.com/caolib/kira';
 
   @override
   String get aboutOpenLinkFailed => '無法開啟連結，請稍後重試';

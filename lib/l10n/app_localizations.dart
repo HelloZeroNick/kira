@@ -2968,7 +2968,7 @@ abstract class AppLocalizations {
   /// No description provided for @aboutBetaChannelArm64Only.
   ///
   /// In zh, this message translates to:
-  /// **'仅限 Android arm64 设备。'**
+  /// **'仅限 Android arm64 与鸿蒙 arm64 设备。'**
   String get aboutBetaChannelArm64Only;
 
   /// No description provided for @aboutBetaChannelDevice.
@@ -2986,8 +2986,26 @@ abstract class AppLocalizations {
   /// No description provided for @aboutRepositoryLabel.
   ///
   /// In zh, this message translates to:
-  /// **'源代码'**
+  /// **'源代码（鸿蒙版）'**
   String get aboutRepositoryLabel;
+
+  /// No description provided for @aboutRepositorySubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'github.com/HelloZeroNick/kira'**
+  String get aboutRepositorySubtitle;
+
+  /// No description provided for @aboutUpstreamRepositoryLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'上游源代码'**
+  String get aboutUpstreamRepositoryLabel;
+
+  /// No description provided for @aboutUpstreamRepositorySubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'github.com/caolib/kira'**
+  String get aboutUpstreamRepositorySubtitle;
 
   /// No description provided for @aboutOpenLinkFailed.
   ///

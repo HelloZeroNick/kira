@@ -1,6 +1,8 @@
 import 'dart:ffi' show Abi;
 import 'dart:io' show Platform;
 
+import 'ohos_platform.dart';
+
 /// 尽力探测当前设备的系统与 CPU 架构,用于「切换到预览版」提示里展示。
 ///
 /// 预览版(CI)只发布 Android arm64-v8a 包,只有 Android 设备会在意架构;
@@ -25,6 +27,8 @@ import 'dart:io' show Platform;
 }
 
 String? _osLabel() {
+  // 鸿蒙放最前：用字符串判断以兼容官方 SDK，见 ohos_platform.dart。
+  if (isOhosPlatform()) return 'HarmonyOS';
   if (Platform.isAndroid) return 'Android';
   if (Platform.isIOS) return 'iOS';
   if (Platform.isWindows) return 'Windows';

@@ -11,6 +11,7 @@ import '../l10n/app_localizations.dart';
 import '../models/user_manager.dart';
 import 'app_dio.dart';
 import 'app_logger.dart';
+import 'ohos_platform.dart';
 import 'time_format.dart';
 import 'toast.dart';
 
@@ -20,6 +21,7 @@ enum AssetPlatform {
   macos('macOS', Icons.laptop_mac),
   ios('iOS', Icons.phone_iphone),
   linux('Linux', Icons.desktop_mac),
+  ohos('HarmonyOS', Icons.phone_android),
   web('Web', Icons.public),
   unknown('Other', Icons.insert_drive_file);
 
@@ -41,13 +43,17 @@ String? deviceAndroidAbi() {
   return null;
 }
 
-/// 预览版(Beta)渠道只发布 Android arm64-v8a 包,当前设备是否吃得下。
+/// 预览版(Beta)渠道只发布 Android arm64-v8a 包和鸿蒙 ohos-arm64 包，
+/// 当前设备是否吃得下。
 ///
-/// 非 Android 设备一律返回 false —— 桌面端虽在测试架构内,但 CI 的 beta
-/// 预发布不含桌面安装包,切到 beta 会落在「无可用安装包」上。这样「红色
+/// 支持的两类：Android arm64-v8a 设备、鸿蒙 arm64 设备（本项目 CI 只出
+/// ohos-arm64）。其余一律 false —— 桌面端虽在测试架构内，但 CI 的 beta
+/// 预发布不含桌面安装包，切到 beta 会落在「无可用安装包」上。这样「红色
 /// 提示」与「警告色 Beta 徽标」同时覆盖「平台不对」和「架构不对」两种。
-bool isBetaChannelSupported() =>
-    Platform.isAndroid && deviceAndroidAbi() == 'arm64-v8a';
+bool isBetaChannelSupported() {
+  if (isOhosPlatform()) return true;
+  return Platform.isAndroid && deviceAndroidAbi() == 'arm64-v8a';
+}
 
 class ReleaseAsset {
   final String name;
@@ -160,10 +166,16 @@ class AppUpdateState {
 enum AppUpdateStatus { idle, checking, available, latest, failed }
 
 class AppUpdateService {
+  /// 更新源指向 HelloZeroNick/kira —— 本仓库是 caolib/kira 的鸿蒙移植分支，
+  /// 鸿蒙安装包只在本仓库的 Release 里发布。上游 caolib/kira 只发 Android /
+  /// Windows，按上游的 release 检查会永远「当前平台暂无安装包」。
+  ///
+  /// 通知中心（[RemoteNoticeService]）仍走 caolib 的 cdn，不跟着改：那是
+  /// 上游统一维护的公告源，与谁发安装包无关。
   static const _latestReleaseUrl =
-      'https://api.github.com/repos/caolib/kira/releases/latest';
+      'https://api.github.com/repos/HelloZeroNick/kira/releases/latest';
   static const _ciReleaseUrl =
-      'https://api.github.com/repos/caolib/kira/releases/tags/CI';
+      'https://api.github.com/repos/HelloZeroNick/kira/releases/tags/CI';
   static final Dio _dio = AppDio.create(
     source: 'app_update',
     options: BaseOptions(
@@ -565,10 +577,18 @@ class AppUpdateService {
     }
   }
 
+  /// 文件名 → 安装包平台。抽成公开方法只为测试覆盖后缀/关键字规则；
+  /// 生产代码统一走 [_parseAssets]。
+  @visibleForTesting
+  static AssetPlatform detectPlatform(String name) => _detectPlatform(name);
+
   static AssetPlatform _detectPlatform(String name) {
     final lower = name.toLowerCase();
     if (lower.endsWith('.apk')) return AssetPlatform.android;
     if (lower.endsWith('.aab')) return AssetPlatform.android;
+    // 鸿蒙安装包后缀是 .hap。name 里通常还带 ohos/harmony 字样，但后缀本身
+    // 已经足够唯一，先判它，避免被下面的 `windows`/`linux` 子串规则抢走。
+    if (lower.endsWith('.hap')) return AssetPlatform.ohos;
     if (lower.endsWith('.exe') || lower.endsWith('.msi')) {
       return AssetPlatform.windows;
     }
@@ -588,11 +608,24 @@ class AppUpdateService {
       return AssetPlatform.linux;
     }
     if (lower.contains('linux')) return AssetPlatform.linux;
+    if (lower.contains('ohos') || lower.contains('harmony')) {
+      return AssetPlatform.ohos;
+    }
     if (lower.contains('web')) return AssetPlatform.web;
     return AssetPlatform.unknown;
   }
 
+  /// 当前构建的平台。
+  ///
+  /// 鸿蒙判断走 [isOhosPlatform]（字符串比较）而不是 `Platform.isOhos` 或
+  /// `TargetPlatform.ohos`：后两者只有 CPF-Flutter 的鸿蒙 SDK 才有，
+  /// 而本仓库的 Android / Windows 发布构建跑官方 Flutter，写死会在官方 SDK
+  /// 上直接编译失败。见 lib/utils/ohos_platform.dart。
+  ///
+  /// 鸿蒙必须放在最前：鸿蒙上 `Platform.isLinux` 等并不会为真，但显式先判
+  /// 可以避免将来某个平台字段变化时被后面的分支误判。
   static AssetPlatform _currentPlatform() {
+    if (isOhosPlatform()) return AssetPlatform.ohos;
     if (Platform.isAndroid) return AssetPlatform.android;
     if (Platform.isIOS) return AssetPlatform.ios;
     if (Platform.isWindows) return AssetPlatform.windows;

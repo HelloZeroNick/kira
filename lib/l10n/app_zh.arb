@@ -939,7 +939,7 @@
   "aboutStableChannelShort": "稳定版",
   "aboutBetaChannelConfirmTitle": "是否切换?",
   "aboutBetaChannelNote": "预览版更新更快，问题也可能更多",
-  "aboutBetaChannelArm64Only": "仅限 Android arm64 设备。",
+  "aboutBetaChannelArm64Only": "仅限 Android arm64 与鸿蒙 arm64 设备。",
   "aboutBetaChannelDevice": "当前设备：{os} {arch}。",
   "@aboutBetaChannelDevice": {
     "placeholders": {
@@ -948,7 +948,10 @@
     }
   },
   "aboutWebsiteLabel": "官网",
-  "aboutRepositoryLabel": "源代码",
+  "aboutRepositoryLabel": "源代码（鸿蒙版）",
+  "aboutRepositorySubtitle": "github.com/HelloZeroNick/kira",
+  "aboutUpstreamRepositoryLabel": "上游源代码",
+  "aboutUpstreamRepositorySubtitle": "github.com/caolib/kira",
   "aboutOpenLinkFailed": "无法打开链接，请稍后重试",
   "aboutFeedbackLabel": "反馈",
   "aboutCheckUpdateTitle": "检查更新",

@@ -336,7 +336,7 @@ extension _AboutPageUpdateSettings on _AboutPageState {
     );
   }
 
-  /// 项目信息卡：免责声明 / 开源许可 / 源代码。
+  /// 项目信息卡：免责声明 / 开源许可 / 源代码（鸿蒙版）/ 上游源代码。
   Widget _buildLegalCard(ColorScheme cs, AppLocalizations l10n) {
     return SettingTileGroup(
       children: [
@@ -353,17 +353,29 @@ extension _AboutPageUpdateSettings on _AboutPageState {
           onTap: () => context.pushNamed(AppRoutes.license),
         ),
         ListTile(
-          leading: SvgPicture.asset(
-            'assets/github.svg',
-            width: AppIconSize.xl,
-            height: AppIconSize.xl,
-            colorFilter: ColorFilter.mode(cs.onSurfaceVariant, BlendMode.srcIn),
-          ),
+          leading: _repoIcon(cs),
           title: Text(l10n.aboutRepositoryLabel),
+          // 副标题点明这是鸿蒙移植仓库，与下面「上游源代码」区分开。
+          subtitle: Text(l10n.aboutRepositorySubtitle),
           trailing: const Icon(Icons.open_in_new),
           onTap: () => _openExternalLink(_AboutPageState._repoUrl),
+        ),
+        ListTile(
+          leading: _repoIcon(cs),
+          title: Text(l10n.aboutUpstreamRepositoryLabel),
+          subtitle: Text(l10n.aboutUpstreamRepositorySubtitle),
+          trailing: const Icon(Icons.open_in_new),
+          onTap: () => _openExternalLink(_AboutPageState._upstreamRepoUrl),
         ),
       ],
     );
   }
+
+  /// 两行源代码共用同一枚 GitHub 图标，避免重复字面量。
+  Widget _repoIcon(ColorScheme cs) => SvgPicture.asset(
+    'assets/github.svg',
+    width: AppIconSize.xl,
+    height: AppIconSize.xl,
+    colorFilter: ColorFilter.mode(cs.onSurfaceVariant, BlendMode.srcIn),
+  );
 }

@@ -150,7 +150,7 @@ void main() {
         );
         expect(find.text('仓库'), findsNothing);
         expect(find.byIcon(Icons.language), findsOneWidget);
-        final source = find.widgetWithText(ListTile, '源代码');
+        final source = find.widgetWithText(ListTile, '源代码（鸿蒙版）');
         await tester.ensureVisible(source);
         await tester.pumpAndSettle();
         final group = find.ancestor(
@@ -168,14 +168,22 @@ void main() {
             tester.getTopLeft(find.widgetWithText(ListTile, '开源许可')).dy,
           ),
         );
+        // 上游源代码排在鸿蒙版源代码之后，两者同属项目信息卡。
+        final upstream = find.widgetWithText(ListTile, '上游源代码');
+        expect(upstream, findsOneWidget);
+        expect(
+          tester.getTopLeft(upstream).dy,
+          greaterThan(tester.getTopLeft(source).dy),
+        );
         expect(tester.takeException(), isNull);
       });
     }
 
     for (final (label, url) in [
       ('官网', 'https://kirakira.dpdns.org'),
-      ('源代码', 'https://github.com/caolib/kira'),
-      ('反馈', 'https://github.com/caolib/kira/issues/new/choose'),
+      ('源代码（鸿蒙版）', 'https://github.com/HelloZeroNick/kira'),
+      ('上游源代码', 'https://github.com/caolib/kira'),
+      ('反馈', 'https://github.com/HelloZeroNick/kira/issues/new/choose'),
     ]) {
       testWidgets('$label直接通过外部浏览器打开正确地址', (tester) async {
         await pumpAbout(tester, width: 375);
@@ -563,7 +571,10 @@ void main() {
         Theme.of(tester.element(find.byType(AboutPage))).colorScheme,
       );
       expect(
-        tester.widget<Text>(find.text('仅限 Android arm64 设备。')).style?.color,
+        tester
+            .widget<Text>(find.text('仅限 Android arm64 与鸿蒙 arm64 设备。'))
+            .style
+            ?.color,
         danger,
       );
       // 探测到设备环境时补一行「当前设备：...」,同样是警示色。

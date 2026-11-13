@@ -59,12 +59,28 @@ extension _UpdateCardActions on _UpdateCardState {
 
   /// In-app download+install is wired for Android APKs only; every other
   /// platform falls back to the asset tile's browser download links.
+  ///
+  /// 鸿蒙的 .hap 同样不走应用内安装：系统安装 HAP 需要走 bm/包管理器，
+  /// 本项目没有对应的原生通道，强行调 Android 的 install_apk 通道会直接抛
+  /// 异常。因此鸿蒙只提供「手动下载」按钮，用户拿到 .hap 自行用 hdc 或
+  /// 系统文件管理器安装。
   bool _canInstallInApp(ReleaseAsset asset) =>
       Platform.isAndroid && asset.platform == AssetPlatform.android;
 
-  /// 当前设备 ABI 对应的 Android 安装包；读不到 ABI 或没有匹配时为
-  /// null，调用方回退为全量展开展示。
+  /// 当前设备架构对应的安装包；读不到架构或没有匹配时为 null，
+  /// 调用方回退为全量展开展示。
+  ///
+  /// 鸿蒙按 `ohos-arm64` / `arm64` 匹配 .hap，Android 仍按 ABI 匹配 .apk。
   ReleaseAsset? _deviceAsset(List<ReleaseAsset> assets) {
+    if (isOhosPlatform()) {
+      for (final a in assets) {
+        if (a.platform != AssetPlatform.ohos) continue;
+        // CI 产物名形如 kira-1.7.6+630-ohos-arm64-unsigned.hap，
+        // 只有 arm64 一种；带 arm64 即认为可装。
+        if (a.name.toLowerCase().contains('arm64')) return a;
+      }
+      return null;
+    }
     final abi = deviceAndroidAbi();
     if (abi == null) return null;
     for (final a in assets) {

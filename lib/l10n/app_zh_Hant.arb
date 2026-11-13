@@ -912,7 +912,7 @@
   "aboutStableChannelShort": "穩定版",
   "aboutBetaChannelConfirmTitle": "是否切換?",
   "aboutBetaChannelNote": "預覽版更新更快，問題也可能更多",
-  "aboutBetaChannelArm64Only": "僅限 Android arm64 裝置。",
+  "aboutBetaChannelArm64Only": "僅限 Android arm64 與鴻蒙 arm64 裝置。",
   "aboutBetaChannelDevice": "目前裝置：{os} {arch}。",
   "@aboutBetaChannelDevice": {
     "placeholders": {
@@ -921,7 +921,10 @@
     }
   },
   "aboutWebsiteLabel": "官網",
-  "aboutRepositoryLabel": "原始碼",
+  "aboutRepositoryLabel": "原始碼（鴻蒙版）",
+  "aboutRepositorySubtitle": "github.com/HelloZeroNick/kira",
+  "aboutUpstreamRepositoryLabel": "上游原始碼",
+  "aboutUpstreamRepositorySubtitle": "github.com/caolib/kira",
   "aboutOpenLinkFailed": "無法開啟連結，請稍後重試",
   "aboutFeedbackLabel": "回饋",
   "aboutCheckUpdateTitle": "檢查更新",

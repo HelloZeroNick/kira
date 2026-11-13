@@ -115,6 +115,37 @@ void main() {
       );
       expect(info, isNull);
     });
+
+    test('鸿蒙设备只认 .hap，APK-only 发布不提示更新', () {
+      final info = check(
+        currentVersion: '1.4.0',
+        platform: AssetPlatform.ohos,
+        assets: [
+          asset('kira-v1.5.0-arm64-v8a.apk', platform: AssetPlatform.android),
+          asset('kira-v1.5.0-windows.exe', platform: AssetPlatform.windows),
+        ],
+      );
+      expect(info, isNotNull);
+      expect(info!.noAssetForPlatform, isTrue);
+    });
+
+    test('鸿蒙设备拿到 .hap 时是更新，且 .hap 排在首位', () {
+      final info = check(
+        currentVersion: '1.4.0',
+        platform: AssetPlatform.ohos,
+        assets: [
+          asset('kira-v1.5.0-arm64-v8a.apk', platform: AssetPlatform.android),
+          asset(
+            'kira-v1.5.0-ohos-arm64-unsigned.hap',
+            platform: AssetPlatform.ohos,
+          ),
+        ],
+      );
+      expect(info, isNotNull);
+      expect(info!.noAssetForPlatform, isFalse);
+      expect(info.assets.first.platform, AssetPlatform.ohos);
+      expect(info.assets.first.name, endsWith('.hap'));
+    });
   });
 
   group('buildBetaUpdateInfo', () {

@@ -52,6 +52,34 @@
             "flutterMode": "profile",
             "deviceId": "win",
             "toolArgs": []
+        },
+        // 鸿蒙（HarmonyOS / OpenHarmony）设备由 DevEco 安装的 hdc 暴露给 Flutter，
+        // 设备 ID 在 `flutter devices` 里以 hdc 序列号/IP 形式出现。
+        {
+            "name": "Debug - OHOS",
+            "request": "launch",
+            "type": "dart",
+            "program": "lib/main.dart",
+            "flutterMode": "debug",
+            "deviceId": "${input:ohosDeviceId}",
+            "toolArgs": []
+        },
+        {
+            "name": "Profile - OHOS",
+            "request": "launch",
+            "type": "dart",
+            "program": "lib/main.dart",
+            "flutterMode": "profile",
+            "deviceId": "${input:ohosDeviceId}",
+            "toolArgs": []
+        }
+    ],
+    "inputs": [
+        {
+            "id": "ohosDeviceId",
+            "type": "promptString",
+            "description": "鸿蒙设备 ID（flutter devices / hdc list targets 里的序列号或 IP:端口）",
+            "default": ""
         }
     ]
 }

@@ -20,6 +20,7 @@ import '../utils/app_logger.dart';
 import '../utils/app_update.dart';
 import '../utils/device_environment.dart';
 import '../utils/kira_links.dart';
+import '../utils/ohos_platform.dart';
 import '../utils/screen_layout.dart';
 import '../utils/toast.dart';
 import '../widgets/github_markdown.dart';
@@ -43,7 +44,11 @@ class AboutPage extends StatefulWidget {
 class _AboutPageState extends State<AboutPage> {
   final _user = UserManager();
 
-  static const _repoUrl = 'https://github.com/caolib/kira';
+  /// 本仓库：caolib/kira 的鸿蒙移植分支，鸿蒙安装包只在这里发布。
+  static const _repoUrl = 'https://github.com/HelloZeroNick/kira';
+
+  /// 上游仓库：Android / Windows 主线的原作者仓库。
+  static const _upstreamRepoUrl = 'https://github.com/caolib/kira';
 
   @override
   void initState() {
@@ -184,7 +189,7 @@ class _AboutPageState extends State<AboutPage> {
                           icon: const Icon(Icons.feedback_outlined),
                           label: l10n.aboutFeedbackLabel,
                           onTap: () => _openExternalLink(
-                            'https://github.com/caolib/kira/issues/new/choose',
+                            'https://github.com/HelloZeroNick/kira/issues/new/choose',
                           ),
                         ),
                         SettingActionTile(

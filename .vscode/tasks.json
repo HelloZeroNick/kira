@@ -18,6 +18,116 @@
                 "reveal": "silent",
                 "close": true
             }
+        },
+        {
+            "label": "ohos: devices",
+            "detail": "列出 Flutter 可见设备；鸿蒙真机需先在系统设置里打开开发者模式与 USB 调试，模拟器需先由 DevEco 启动。",
+            "type": "shell",
+            "command": "flutter devices",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "close": true
+            }
+        },
+        {
+            "label": "ohos: build hap (release)",
+            "detail": "AOT release HAP，产物优先看 build/ohos/hap/entry-default-*-signed.hap；本机签名走 ohos/build-profile.json5 的 default signingConfig。",
+            "type": "shell",
+            "command": "flutter build hap --release --target-platform ohos-arm64",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always"
+            }
+        },
+        {
+            "label": "ohos: build hap (debug)",
+            "detail": "debug HAP（无 libapp.so AOT 载荷），仅用于本机排障，不要分发。",
+            "type": "shell",
+            "command": "flutter build hap --debug",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always"
+            }
+        },
+        {
+            "label": "ohos: run on device",
+            "detail": "在指定鸿蒙设备上启动 debug 会话；设备 ID 来自 ${input:ohosDeviceId}，可先跑 ohos: devices 查看。",
+            "type": "shell",
+            "command": "flutter run -d ${input:ohosDeviceId}",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            }
+        },
+        {
+            "label": "ohos: install hap (hdc)",
+            "detail": "用 hdc 安装已签名的 HAP。flutter build hap 会把产物复制到 build/ohos/hap/，未签名文件在 CI 里产出，本机安装需要 signed。",
+            "type": "shell",
+            "command": "hdc install ${input:hapPath}",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "close": true
+            }
+        },
+        {
+            "label": "ohos: hilog",
+            "detail": "前台跟随设备日志（阻塞终端，Ctrl+C 停止）。只想扫一遍当前缓冲不阻塞时，把命令改成 hdc hilog -x。",
+            "type": "shell",
+            "command": "hdc hilog",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            }
+        },
+        {
+            "label": "ohos: clean",
+            "detail": "flutter clean；之后重新 flutter pub get --enforce-lockfile 再构建。",
+            "type": "shell",
+            "command": "flutter clean",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "silent",
+                "close": true
+            }
+        }
+    ],
+    "inputs": [
+        {
+            "id": "ohosDeviceId",
+            "type": "promptString",
+            "description": "鸿蒙设备 ID（flutter devices / hdc list targets 里的序列号或 IP:端口）；可留空后把 KIRA_OHOS_DEVICE 环境变量写进 launch.json 的 env",
+            "default": ""
+        },
+        {
+            "id": "hapPath",
+            "type": "promptString",
+            "description": "要安装的 HAP 路径（相对仓库根）",
+            "default": "build/ohos/hap/entry-default-signed.hap"
         }
     ]
 }
