@@ -49,7 +49,14 @@ env:
 jobs:
   build-hap:
     name: Build HAP (arm64)
-    runs-on: ubuntu-latest
+    # 必须钉在 ubuntu-24.04，不能跟 ubuntu-latest 漂移：
+    # HarmonyOS CLI 工具链自带的 ld.lld 依赖 libxml2.so.2，而 Ubuntu 25.10
+    # 起把 libxml2 的 soname 换成了 libxml2.so.16；ubuntu-latest 已经指向
+    # ubuntu-26.04，于是在 CMake 探测编译器时报
+    #   ld.lld: error while loading shared libraries: libxml2.so.2
+    # 整个 HAP 构建失败。24.04（noble）仍是 libxml2.so.2，可正常链接。
+    # 升级镜像前需先确认 SDK 的 BiSheng 工具链已改用新的 soname。
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v6
