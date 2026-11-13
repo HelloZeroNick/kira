@@ -207,7 +207,7 @@ class NovelReaderSettings {
 
   /// 网译源 txt 常以空行分隔段落；默认保留空行，开启后仅隐藏显示，
   /// 源数据与段落下标不变。
-  static const defaultIgnoreBlankParagraphs = false;
+  static const defaultIgnoreBlankParagraphs = true;
 
   /// 专注模式：上下黑遮罩夹出中间可见区，两边界至少相隔 10% 屏高。
   static const defaultFocusModeEnabled = false;
