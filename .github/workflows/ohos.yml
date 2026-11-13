@@ -1,35 +1,39 @@
 name: Build HarmonyOS (ohos)
 
-# 鸿蒙 HAP 只作为 Actions artifact 供维护者下载后手动签名分发，**不参与发布**：
-# 正式 Release 的资产由 scripts/generate_release_manifest.py 严格校验，
-# installer_assets() 只接受 4 个固定文件名（android arm64-v8a / armeabi-v7a /
-# x86_64 三个 apk + windows-x64-setup.exe），多出任何资产都会直接 ValueError
-# 让整个发布流程失败。因此本工作流：
-#   1) 不挂 push: tags: v*，避免与正式发布会话并发/相互干扰；
-#   2) 只在手动 dispatch 与 release: published 时构建；
-#   3) 只上传 Actions artifact，并在 Step Summary 写明产物，绝不把 .hap
-#      附加到 Release（如需上架应用市场，下载后自行用 DevEco 签名）。
+# 本仓库是 kira 的鸿蒙移植版，CI 只构建鸿蒙 HAP，不再构建 Android / Windows。
 #
-# 与 Android/Windows 工作流不同，这里走 CPF-Flutter 的 oh-3.47.9-dev 分支，
-# 且本项目没有 Rust/FFI 原生核心、没有 libmpv，因此没有 Cargo 交叉编译步骤；
+# 触发方式：
+#   1) 推送 v* tag：构建 release HAP 并创建/更新对应的 GitHub Release，
+#      把 kira-<版本>-ohos-arm64.hap 作为 Release 资产上传（这就是"ohos 的
+#      release 包"，应用内检查更新会从这里拿安装包）；
+#   2) 手动 dispatch：同样构建，tag 输入留空时只上传 Actions artifact，
+#      填了 tag 才创建 Release —— 便于先验证再正式发。
+#
+# 用的是 CPF-Flutter 的 oh-3.47.9-dev 分支，不是官方 Flutter。
+# 本项目没有 Rust/FFI 原生核心、没有 libmpv，因此没有 Cargo 交叉编译步骤；
 # HAP 里必需的原生库只有 libapp.so（AOT 载荷）、libflutter.so、libc++_shared.so。
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
+      tag_name:
+        description: "发布版本号（如 v1.7.6）。留空则只产出 Actions artifact，不创建 Release"
+        required: false
+        default: ""
       note:
-        description: "构建说明 (可选，仅写入 Step Summary)"
+        description: "构建说明 (可选，写入 Release 正文与 Step Summary)"
         required: false
         default: ""
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: ohos-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   # 鸿蒙版 Flutter 分支；与本机开发环境保持一致（fqapp 用的是 oh-3.44.9-dev）。
@@ -39,10 +43,12 @@ env:
   # ohos/build-profile.json5 的 compatibleSdkVersion 仍声明 5.0.5(17)，
   # 二者不冲突：前者是编译所用工具链，后者是安装运行的最低兼容版本。
   OHOS_SDK_VERSION: "26.0.0.821"
+  # 手动 dispatch 时用户填的版本号；tag 触发时为空，后续回落到 github.ref_name。
+  INPUT_TAG: ${{ github.event.inputs.tag_name }}
 
 jobs:
   build-hap:
-    name: Build unsigned HAP (arm64)
+    name: Build HAP (arm64)
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -111,8 +117,8 @@ jobs:
           GIT_LFS_SKIP_SMUDGE: 1
         run: |
           set -euo pipefail
-          # 不设置 PUB_HOSTED_URL：依赖源固定为 pub.dev（与本地一致）。
-          # --enforce-lockfile 是项目规范，锁文件一旦漂移立即失败。
+          # 不设置 PUB_HOSTED_URL：pubspec.lock 里的 hosted 依赖都钉在 pub.dev，
+          # 指向镜像会让每个条目都对不上、--enforce-lockfile 直接失败。
           flutter pub get --enforce-lockfile
           git diff --exit-code -- pubspec.lock
 
@@ -128,22 +134,27 @@ jobs:
             2>&1 | tee /tmp/flutter_build_hap.log
 
       - name: Collect and validate unsigned HAP
+        id: collect
         shell: bash
-        env:
-          NOTE: ${{ github.event.inputs.note }}
         run: |
           set -euo pipefail
 
-          # 文件名始终用 pubspec 的完整版本（含 +build），与 build-ci.yml 一致。
-          # 必须是 `1.7.6+630` 这种带 build number 的形式：lib/utils/app_update.dart
+          # 文件名必须带 pubspec 的完整版本（含 +build）：lib/utils/app_update.dart
           # 的 _parseVersionFromName 用 /(\d+)\.(\d+)\.(\d+)\+(\d+)/ 解析内部版本，
           # 只写 1.7.6 会解析失败并退化成按时间排序，beta 渠道就无法比较新旧。
-          version="$(awk '/^version:/ {print $2; exit}' pubspec.yaml)"
-          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+$ ]]; then
-            echo "::error::pubspec.yaml 的 version 不是 <major>.<minor>.<patch>+<build> 形式: '$version'" >&2
+          pub_version="$(awk '/^version:/ {print $2; exit}' pubspec.yaml)"
+          if [[ ! "$pub_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+$ ]]; then
+            echo "::error::pubspec.yaml 的 version 不是 <major>.<minor>.<patch>+<build> 形式: '$pub_version'" >&2
             exit 1
           fi
-          echo "version=$version"
+          echo "pub_version=$pub_version"
+
+          # Release 版本号：手动 dispatch 用输入值，tag 触发用 tag 名。
+          release_tag="${INPUT_TAG:-}"
+          if [[ -z "$release_tag" && "$GITHUB_REF_TYPE" == "tag" ]]; then
+            release_tag="$GITHUB_REF_NAME"
+          fi
+          echo "release_tag=$release_tag"
 
           # flutter build hap 会把产物复制到仓库根的 build/ohos/hap/，优先取那里；
           # 兜底再找 Hvigor 的原始输出目录。
@@ -203,13 +214,22 @@ jobs:
             exit 1
           fi
 
+          # 资产名用 pubspec 完整版本（含 +build），与 app_update.dart 的
+          # _parseVersionFromName 约定一致；+ 在 GitHub 资产名/URL 里合法。
           mkdir -p dist
-          target="dist/kira-${version}-ohos-arm64-unsigned.hap"
+          target="dist/kira-${pub_version}-ohos-arm64-unsigned.hap"
           install -m 0644 "$hap" "$target"
           ls -la dist/
 
           {
-            echo "### HarmonyOS HAP（unsigned，仅 artifact）"
+            echo "hap_path=$target"
+            echo "hap_name=$(basename "$target")"
+            echo "hap_size=$(stat -c %s "$target")"
+            echo "release_tag=$release_tag"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### HarmonyOS HAP"
             echo ""
             echo "| 项 | 值 |"
             echo "| --- | --- |"
@@ -217,22 +237,72 @@ jobs:
             echo "| 源路径 | \`$hap\` |"
             echo "| 大小 | $(stat -c %s "$target") 字节 |"
             echo "| AOT 载荷 | libapp.so / libflutter.so / libc++_shared.so 均在 |"
-            echo "| SDK | 命令行工具 $OHOS_SDK_VERSION（自带 API 26） |"
+            echo "| 命令行工具 | $OHOS_SDK_VERSION（自带 API 26） |"
+            echo "| Release | ${release_tag:-未创建（仅 artifact）} |"
             echo ""
-            echo "该 HAP 未签名：CI 无签名材料，需下载后用 DevEco 签名再分发。"
-            echo "**请勿**把 .hap 附加到正式 Release —— scripts/generate_release_manifest.py"
-            echo "的 installer_assets 白名单只允许 4 个固定安装包名。"
+            echo "该 HAP 由 CI 以 \`--no-codesign\` 构建，未签名；"
+            echo "安装或分发前需用 DevEco Studio 完成签名。"
           } >> "$GITHUB_STEP_SUMMARY"
           if [[ -n "${NOTE:-}" ]]; then
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "构建说明: ${NOTE}" >> "$GITHUB_STEP_SUMMARY"
           fi
+        env:
+          NOTE: ${{ github.event.inputs.note }}
 
       - name: Upload HAP artifact
         uses: actions/upload-artifact@v6
         with:
           name: kira-ohos-hap
-          # only artifact, never release assets（详见文件头注释）
           path: dist/*.hap
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
+
+      - name: Create or update GitHub Release
+        if: steps.collect.outputs.release_tag != ''
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NOTE: ${{ github.event.inputs.note }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.collect.outputs.release_tag }}"
+          hap="${{ steps.collect.outputs.hap_path }}"
+
+          # 正文：版本号 + 该 tag 相对上一个 tag 的 feat/fix 标题（与旧 build-ci
+          # 的日志风格一致），手动 dispatch 时补构建说明。
+          {
+            echo "Kira 鸿蒙版 ${tag}"
+            echo
+            prev="$(git tag --sort=-v:refname | grep -vx "$tag" | head -n1 || true)"
+            if [[ -n "$prev" ]]; then
+              git log --pretty=format:"%s" "${prev}..HEAD" \
+                | grep -E '(^|[[:space:]])(feat|fix|style)[(:]' \
+                | sed 's/^/- /' || true
+            else
+              git log --pretty=format:"%s" -30 \
+                | grep -E '(^|[[:space:]])(feat|fix|style)[(:]' \
+                | sed 's/^/- /' || true
+            fi
+            if [[ -n "${NOTE:-}" ]]; then
+              echo
+              echo
+              echo "$NOTE"
+            fi
+            echo
+            echo "> 鸿蒙 arm64 HAP，CI 以 --no-codesign 构建，安装前需自行签名。"
+          } > release-notes.md
+
+          if gh release view "$tag" --repo="$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            # 已存在的 Release：只替换同名 HAP 资产，不动正文与其它资产。
+            gh release upload "$tag" "$hap" --repo="$GITHUB_REPOSITORY" --clobber
+            echo "已更新 Release $tag 的 HAP 资产"
+          else
+            gh release create "$tag" "$hap" \
+              --repo="$GITHUB_REPOSITORY" \
+              --target="$GITHUB_SHA" \
+              --title="Kira 鸿蒙版 ${tag}" \
+              --notes-file release-notes.md \
+              --latest
+            echo "已创建 Release $tag"
+          fi
