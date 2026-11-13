@@ -49,6 +49,11 @@ flutter build hap --release --target-platform ohos-arm64
 
 ## 发布
 
-在 Claude Code 中使用项目 [`/release` skill](../.claude/skills/release/SKILL.md)，先确认版本与渠道、审查更新日志，再批准发布。
+CI 只构建鸿蒙（`.github/workflows/ohos.yml`），不再有 Android / Windows 的 Actions 构建：
 
-正式版 Actions 自动生成 [`release.json` 发布清单](release-manifest.md)，提供全部安装包的下载链接与发布元信息。
+- 推 `v*` tag：构建鸿蒙 arm64 HAP，并创建/更新对应 GitHub Release，把 `kira-<pubspec 版本>-ohos-arm64-unsigned.hap` 作为 Release 资产上传。应用内「检查更新」从 `HelloZeroNick/kira` 的 Release 取包。
+- 手动 dispatch：`tag_name` 留空只产出 Actions artifact；填了版本号才创建 Release。
+
+CI 以 `--no-codesign` 构建，产物未签名，安装或分发前需用 DevEco Studio 完成签名。发布内容的人工确认仍走项目 [`/release` skill](../.claude/skills/release/SKILL.md)。
+
+[`release.json` 发布清单](release-manifest.md) 协议与脚本仍在仓库中，但当前没有工作流会生成它。

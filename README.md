@@ -37,6 +37,10 @@
 
 `ohos/local.properties` 由 flutter 自动生成（含 `hwsdk.dir`、`flutter.sdk`、`flutter.versionName`、`flutter.versionCode`），不要手写。不要设置 `PUB_HOSTED_URL`。
 
+## 发布
+
+CI 只构建鸿蒙：推 `v*` tag 或手动触发 `Build HarmonyOS (ohos)` 工作流，构建 arm64 HAP 并创建/更新 GitHub Release，把 `kira-<版本>-ohos-arm64-unsigned.hap` 作为 Release 资产提供（应用内检查更新从这里取包）。CI 产物未签名，安装前需用 DevEco Studio 签名。
+
 <p align="center">
   <img src="https://skills.syvixor.com/api/icons?perline=15&i=flutter,dart,materialdesign,android,windows"/>
 </p>

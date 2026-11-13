@@ -109,4 +109,4 @@ git diff --exit-code -- pubspec.lock
 - 仅在用户要求时提交/推送；提交用 emoji + Conventional Commit + 简洁中文，如 `✨ feat: 添加检查更新功能`、`🐛 fix: 登录过期后提醒用户登录`。
 - `scripts/git-hooks/pre-commit` 自动运行 `scripts/update_version_code.ps1`，将 versionCode 设为「HEAD 提交数 + 1」并暂存 `pubspec.yaml`，属于预期改动，不回退。新克隆需 `git config core.hooksPath scripts/git-hooks` 启用。
 - 普通开发不更新 `docs/CHANGELOG.md`。发版、续发、发布日志修正走项目 `/release` skill；自然语言请求先读 `.claude/skills/release/SKILL.md`，执行**信息确认 → 完整日志审查 → 发布批准**，批准后才提交、打标签和推送。
-- CI：`build-ci.yml` 为 `v*-beta*` tag/手动 Android 构建；`build-test.yml` 仅手动构建测试 APK artifact（不创建 Release）；`release.yml` 为非 beta 的 `v*` tag/手动正式版构建（arm/arm64/x64 APK 与 Windows 安装包）；`release-all.yaml` 手动构建 Android arm64、Windows ZIP+Setup、macOS、Linux（不含 iOS/web）。
+- CI 只构建鸿蒙：`ohos.yml` 为 `v*` tag/手动构建鸿蒙 arm64 HAP，把 `kira-<pubspec 版本>-ohos-arm64-unsigned.hap` 作为 Actions artifact 上传；带 tag 时另建/更新 GitHub Release 并附上该 HAP（应用内检查更新从这里取包）。Android / Windows 的构建工作流已移除，本地仍可用 `scripts/build_apk.ps1`、`scripts/build_windows.ps1` 构建。HAP 由 CI 以 `--no-codesign` 构建，安装前需 DevEco Studio 签名。

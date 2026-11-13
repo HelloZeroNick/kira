@@ -1,5 +1,10 @@
 # 正式版发布清单
 
+> [!NOTE]
+> **当前 CI 不再生成 `release.json`。** 本仓库已移除 Android / Windows 构建工作流（`release.yml` 等），CI 只剩 `.github/workflows/ohos.yml`，发布的是鸿蒙 HAP。本文描述的清单协议与 `scripts/generate_release_manifest.py` 脚本仍保留在仓库里（脚本未删除），但没有任何工作流会调用它们；如需恢复清单发布，须自行重新接入一个会调用该脚本的 job。
+>
+> 下文中的 Release 资产名（三种 APK + Windows 安装包）同样只描述旧流程，鸿蒙 HAP 不在该清单白名单内。
+
 `.github/workflows/release.yml` 的 `release` job 在安装包发布成功后，通过 `scripts/generate_release_manifest.py` 的 `publish_manifest` 生成并上传 `release.json`，供官网或外部脚本读取。应用内更新仍使用现有 GitHub Releases API，不改客户端协议。
 
 ## 访问入口
