@@ -1,0 +1,238 @@
+name: Build HarmonyOS (ohos)
+
+# 鸿蒙 HAP 只作为 Actions artifact 供维护者下载后手动签名分发，**不参与发布**：
+# 正式 Release 的资产由 scripts/generate_release_manifest.py 严格校验，
+# installer_assets() 只接受 4 个固定文件名（android arm64-v8a / armeabi-v7a /
+# x86_64 三个 apk + windows-x64-setup.exe），多出任何资产都会直接 ValueError
+# 让整个发布流程失败。因此本工作流：
+#   1) 不挂 push: tags: v*，避免与正式发布会话并发/相互干扰；
+#   2) 只在手动 dispatch 与 release: published 时构建；
+#   3) 只上传 Actions artifact，并在 Step Summary 写明产物，绝不把 .hap
+#      附加到 Release（如需上架应用市场，下载后自行用 DevEco 签名）。
+#
+# 与 Android/Windows 工作流不同，这里走 CPF-Flutter 的 oh-3.47.9-dev 分支，
+# 且本项目没有 Rust/FFI 原生核心、没有 libmpv，因此没有 Cargo 交叉编译步骤；
+# HAP 里必需的原生库只有 libapp.so（AOT 载荷）、libflutter.so、libc++_shared.so。
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      note:
+        description: "构建说明 (可选，仅写入 Step Summary)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ohos-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # 鸿蒙版 Flutter 分支；与本机开发环境保持一致（fqapp 用的是 oh-3.44.9-dev）。
+  FLUTTER_OHOS_BRANCH: oh-3.47.9-dev
+  # HarmonyOS 命令行工具版本（不是 SDK API 号）。26.0.0.821 自带 API 26 SDK，
+  # 与本机开发环境的 SDK（ETS 包 26.0.0.105 / API 26）对应；
+  # ohos/build-profile.json5 的 compatibleSdkVersion 仍声明 5.0.5(17)，
+  # 二者不冲突：前者是编译所用工具链，后者是安装运行的最低兼容版本。
+  OHOS_SDK_VERSION: "26.0.0.821"
+
+jobs:
+  build-hap:
+    name: Build unsigned HAP (arm64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: "zulu"
+          java-version: "17"
+
+      - name: Install Linux deps for the HarmonyOS toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          # ErBWs/setup-ohos 的 README 明确要求 Linux 上有 libgl1-mesa-dev，
+          # 否则 SDK 里的部分二进制工具在 runner 上无法加载。
+          sudo apt-get update
+          sudo apt-get install -y libgl1-mesa-dev
+
+      - name: Install Flutter for OpenHarmony (${{ env.FLUTTER_OHOS_BRANCH }})
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 必须完整 clone（不能 --depth 1）：ohos 版 flutter 靠 `git describe
+          # --tags` 推导自身版本号，浅克隆会得到 0.0.0-unknown，随后的
+          # `flutter pub get` 直接失败。
+          git clone -b "$FLUTTER_OHOS_BRANCH" \
+            https://gitcode.com/CPF-Flutter/flutter_flutter.git "$RUNNER_TEMP/flutter"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+          export PATH="$RUNNER_TEMP/flutter/bin:$PATH"
+          flutter --version
+          flutter config --no-analytics
+          # doctor 只用于在日志里留证据；SDK 缺失由后面的真实构建暴露，
+          # 不让 doctor 的退出码中断整个 job。
+          flutter doctor -v || true
+
+      - name: Setup HarmonyOS toolchain
+        uses: ErBWs/setup-ohos@v2
+        with:
+          # 命令行工具版本；自带 API 26 SDK，与本机开发环境对齐。
+          version: ${{ env.OHOS_SDK_VERSION }}
+          cache: true
+
+      - name: Verify toolchain environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          # ErBWs/setup-ohos 会把这两个变量写进 $GITHUB_ENV；后续步骤
+          # （hvigor 与 flutter build hap）都靠它们定位 SDK/NDK。这里显式打印
+          # 出来便于排障：变量缺失只告警（构建随后会以更明确的错误失败），
+          # 但一旦设置了就必须指向真实存在的目录。
+          for var in HOS_SDK_HOME OHOS_NDK_HOME; do
+            if [[ -z "${!var:-}" ]]; then
+              echo "::warning::$var 未由 setup-ohos 导出，构建可能找不到 SDK/NDK" >&2
+              continue
+            fi
+            echo "$var=${!var}"
+            [[ -d "${!var}" ]] || { echo "::error::$var 指向的目录不存在: ${!var}" >&2; exit 1; }
+          done
+
+      - name: Get locked dependencies
+        shell: bash
+        env:
+          # gitcode 上的 LFS 需要认证；跳过 smudge，只取源码。
+          GIT_LFS_SKIP_SMUDGE: 1
+        run: |
+          set -euo pipefail
+          # 不设置 PUB_HOSTED_URL：依赖源固定为 pub.dev（与本地一致）。
+          # --enforce-lockfile 是项目规范，锁文件一旦漂移立即失败。
+          flutter pub get --enforce-lockfile
+          git diff --exit-code -- pubspec.lock
+
+      - name: Build HAP (release, unsigned)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # --no-codesign：CI 没有签名材料，让产物直接是 unsigned，
+          # 避免 Hvigor 在签名阶段失败（失败时产物可能只写了一半）。
+          # 实测本机产物在 build/ohos/hap/entry-default-unsigned.hap，
+          # 同时 ohos/entry/build/default/outputs/default/ 下也有同名文件。
+          flutter build hap --release --no-codesign --target-platform ohos-arm64 \
+            2>&1 | tee /tmp/flutter_build_hap.log
+
+      - name: Collect and validate unsigned HAP
+        shell: bash
+        env:
+          NOTE: ${{ github.event.inputs.note }}
+        run: |
+          set -euo pipefail
+
+          # 文件名始终用 pubspec 的完整版本（含 +build），与 build-ci.yml 一致。
+          # 必须是 `1.7.6+630` 这种带 build number 的形式：lib/utils/app_update.dart
+          # 的 _parseVersionFromName 用 /(\d+)\.(\d+)\.(\d+)\+(\d+)/ 解析内部版本，
+          # 只写 1.7.6 会解析失败并退化成按时间排序，beta 渠道就无法比较新旧。
+          version="$(awk '/^version:/ {print $2; exit}' pubspec.yaml)"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+$ ]]; then
+            echo "::error::pubspec.yaml 的 version 不是 <major>.<minor>.<patch>+<build> 形式: '$version'" >&2
+            exit 1
+          fi
+          echo "version=$version"
+
+          # flutter build hap 会把产物复制到仓库根的 build/ohos/hap/，优先取那里；
+          # 兜底再找 Hvigor 的原始输出目录。
+          hap=""
+          for candidate in \
+            build/ohos/hap/entry-default-unsigned.hap \
+            ohos/entry/build/default/outputs/default/entry-default-unsigned.hap; do
+            if [[ -f "$candidate" ]]; then
+              hap="$candidate"
+              break
+            fi
+          done
+          if [[ -z "$hap" ]]; then
+            hap="$(find build/ohos/hap ohos/entry/build/default/outputs/default \
+              -maxdepth 1 -name '*.hap' ! -name '*-signed.hap' 2>/dev/null | head -n1 || true)"
+          fi
+          if [[ -z "$hap" ]]; then
+            echo "::error::flutter build hap --release --no-codesign 没有产出 unsigned .hap" >&2
+            find build/ohos ohos/entry/build -name '*.hap' >&2 2>/dev/null || true
+            exit 1
+          fi
+          case "$hap" in
+            *.hap) ;;
+            *) echo "::error::收集到的产物不是 .hap 文件: $hap" >&2; exit 1 ;;
+          esac
+          echo "hap_source=$hap"
+
+          unzip -l "$hap" > /tmp/hap-listing.txt
+
+          # release 构建的 AOT 载荷必须是 libs/arm64-v8a/libapp.so；
+          # debug 包不含它，所以它缺失就是"构建模式不对"，而不是打包问题。
+          payloads="$(grep -c 'libs/.*/libapp\.so' /tmp/hap-listing.txt || true)"
+          if [[ "${payloads:-0}" -eq 0 ]]; then
+            echo "::error::HAP 内没有 libapp.so（AOT 载荷），不是 release 构建" >&2
+            grep 'libs/' /tmp/hap-listing.txt >&2 || true
+            exit 1
+          fi
+
+          # libflutter.so 与 libc++_shared.so 是运行期必需（libapp.so 依赖
+          # libc++_shared）；设备本身不提供，缺了会在启动时崩溃。
+          missing=()
+          for required in libapp.so libflutter.so libc++_shared.so; do
+            if ! grep -q "libs/arm64-v8a/${required}\$" /tmp/hap-listing.txt; then
+              missing+=("$required")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::HAP 缺少必需的原生库: ${missing[*]}" >&2
+            grep 'libs/' /tmp/hap-listing.txt >&2 || true
+            exit 1
+          fi
+
+          # 库文件存在也可能是 0 字节占位符；AOT 载荷至少有几百 KB。
+          libapp_size="$(awk '$4 ~ /libs\/arm64-v8a\/libapp\.so$/ {print $1}' /tmp/hap-listing.txt | head -n1)"
+          if [[ "${libapp_size:-0}" -lt 1048576 ]]; then
+            echo "::error::HAP 内 libapp.so 只有 ${libapp_size:-0} 字节，AOT 载荷不完整" >&2
+            exit 1
+          fi
+
+          mkdir -p dist
+          target="dist/kira-${version}-ohos-arm64-unsigned.hap"
+          install -m 0644 "$hap" "$target"
+          ls -la dist/
+
+          {
+            echo "### HarmonyOS HAP（unsigned，仅 artifact）"
+            echo ""
+            echo "| 项 | 值 |"
+            echo "| --- | --- |"
+            echo "| 产物 | \`$(basename "$target")\` |"
+            echo "| 源路径 | \`$hap\` |"
+            echo "| 大小 | $(stat -c %s "$target") 字节 |"
+            echo "| AOT 载荷 | libapp.so / libflutter.so / libc++_shared.so 均在 |"
+            echo "| SDK | 命令行工具 $OHOS_SDK_VERSION（自带 API 26） |"
+            echo ""
+            echo "该 HAP 未签名：CI 无签名材料，需下载后用 DevEco 签名再分发。"
+            echo "**请勿**把 .hap 附加到正式 Release —— scripts/generate_release_manifest.py"
+            echo "的 installer_assets 白名单只允许 4 个固定安装包名。"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ -n "${NOTE:-}" ]]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "构建说明: ${NOTE}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload HAP artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: kira-ohos-hap
+          # only artifact, never release assets（详见文件头注释）
+          path: dist/*.hap
+          if-no-files-found: error
+          retention-days: 14
