@@ -148,6 +148,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noContent => '暂无内容';
 
   @override
+  String get copyHomeEmptyResponse => '暂无可显示内容';
+
+  @override
   String get hotRecommend => '热门推荐';
 
   @override
@@ -3808,6 +3811,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get novelReaderRealisticPageTurn => '仿真翻页';
 
   @override
+  String get novelReaderTypography => '排版';
+
+  @override
   String get novelReaderFontSize => '字号';
 
   @override
@@ -4191,6 +4197,9 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get noContent => '暫無內容';
+
+  @override
+  String get copyHomeEmptyResponse => '暫無可顯示內容';
 
   @override
   String get hotRecommend => '熱門推薦';
@@ -7851,6 +7860,9 @@ class AppLocalizationsZhHant extends AppLocalizationsZh {
 
   @override
   String get novelReaderRealisticPageTurn => '仿真翻頁';
+
+  @override
+  String get novelReaderTypography => '排版';
 
   @override
   String get novelReaderFontSize => '字級';
