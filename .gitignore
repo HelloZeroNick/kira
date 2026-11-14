@@ -90,3 +90,5 @@ ref/
 .ccgui
 
 skills-lock.json
+ohos/.cache/.tsbuildinfo
+ohos/.cache/.tsbuildinfo.linter

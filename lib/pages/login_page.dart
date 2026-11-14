@@ -719,6 +719,12 @@ class _LoginPageState extends State<LoginPage> {
             controller: _passwordCtrl,
             focusNode: _passwordFocus,
             autofillHints: const [AutofillHints.password],
+            // 必须显式声明 visiblePassword：Material TextField 会先把
+            // keyboardType 落成 TextInputType.text，autofillHints 没有机会参与
+            // 推断。鸿蒙引擎只在输入类型为 VISIBLE_PASSWORD 时才会拉起安全
+            // 键盘（见 flutter_ohos 的 hasSecureKeyboardInSwitch），密码保险箱
+            // 的填充/保存也依赖这个语义，缺了它两个能力都不生效。
+            keyboardType: TextInputType.visiblePassword,
             obscureText: _obscure,
             decoration: InputDecoration(
               labelText: l10n.profilePasswordLabel,
