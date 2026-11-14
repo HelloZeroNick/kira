@@ -30,6 +30,7 @@
               "action.system.home"
             ]
           },
+          // kira:// 自定义协议深链（如 kira://open/comic/{pathWord} 打开漫画详情）。
           {
             "actions": ["ohos.want.action.viewData"],
             "entities": ["entity.system.default"],
@@ -38,6 +39,36 @@
                 "scheme": "kira"
               }
             ]
+          },
+          // https 分享链接（App Linking）。落地页 https://{webHost}/c/?w={pathWord}
+          // 由 app_router.dart 的 /c 路由重定向到 /comic/:pathWord。
+          //
+          // 与 Android 的 autoVerify 对应：domainVerify 走鸿蒙自己的域名校验，需要
+          //  1. 域名服务器部署 https://kira.caolib.qzz.io/.well-known/applinking.json
+          //     （内容是 {"applinking":{"apps":[{"appIdentifier":"<AGC APP ID>"}]}}，
+          //      与 Android 的 assetlinks.json 是两份不同的文件）；
+          //  2. AGC「增长 > App Linking > 应用链接」创建并发布该域名。
+          // 任一步没做，链接只会落到浏览器打开，不会拉起应用。
+          {
+            "actions": ["ohos.want.action.viewData"],
+            "entities": ["entity.system.browsable"],
+            "uris": [
+              // path 类字段都不带前导斜杠。这里只认 /c 与 /c/xxx：
+              //   "path": "c"          → 匹配 /c
+              //   "pathStartWith": "c/" → 匹配 /c/...（分享链接形如 /c/?w=xxx）
+              // 不用 "pathStartWith": "c"，否则 /comic、/category 之类也会被拉进来。
+              {
+                "scheme": "https",
+                "host": "kira.caolib.qzz.io",
+                "path": "c"
+              },
+              {
+                "scheme": "https",
+                "host": "kira.caolib.qzz.io",
+                "pathStartWith": "c/"
+              }
+            ],
+            "domainVerify": true
           },
         ]
       }
