@@ -136,7 +136,9 @@ extension _NetworkActions on _NetworkPageState {
       );
       return;
     }
+    FocusScope.of(context).unfocus();
     _customLoginHostController.clear();
+    _setState(() => _addingLoginHost = false);
     unawaited(_testLoginHostLatency([value]));
   }
 
@@ -153,18 +155,19 @@ extension _NetworkActions on _NetworkPageState {
 
   Future<void> _editCustomLoginHost(String host) async {
     final l10n = AppLocalizations.of(context)!;
-    final controller = TextEditingController(text: host);
+    var editedHost = host;
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(l10n.networkCopyLoginDomainEditTitle),
-        content: TextField(
-          controller: controller,
+        content: TextFormField(
+          initialValue: host,
+          onChanged: (value) => editedHost = value,
           autofocus: true,
           decoration: const InputDecoration(border: OutlineInputBorder()),
           keyboardType: TextInputType.url,
           textInputAction: TextInputAction.done,
-          onSubmitted: (value) => Navigator.pop(ctx, value),
+          onFieldSubmitted: (value) => Navigator.pop(ctx, value),
         ),
         actions: [
           TextButton(
@@ -172,18 +175,13 @@ extension _NetworkActions on _NetworkPageState {
             child: Text(l10n.cancelButton),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text),
+            onPressed: () => Navigator.pop(ctx, editedHost),
             child: Text(l10n.commentSettingsSaveButton),
           ),
         ],
       ),
     );
-    if (result == null) {
-      controller.dispose();
-      return;
-    }
-    controller.dispose();
-    if (!mounted) return;
+    if (result == null || !mounted) return;
 
     final wasCurrent = _user.copyLoginHost == host;
     final ok = await _user.updateCustomCopyLoginHost(host, result);
@@ -280,9 +278,11 @@ extension _NetworkActions on _NetworkPageState {
     try {
       final apiHost = await ApiClient().network.fetchCopyApiHost();
       final version = await ApiClient().manga.fetchCopyLatestAppVersion();
+      final versionCode = await _fetchRemoteVersionCode();
       if (!mounted) return;
       _copyApiHostController.text = apiHost;
       _copyAppVersionController.text = version;
+      if (versionCode != null) _copyVersionCodeController.text = versionCode;
       _showToast(
         AppLocalizations.of(context)!.networkCopyAutoFilled(apiHost, version),
       );
@@ -296,6 +296,22 @@ extension _NetworkActions on _NetworkPageState {
       if (mounted) {
         _setState(() => _autoFillingCopySettings = false);
       }
+    }
+  }
+
+  /// 官网配置只提供 versionCode；失败时返回 null，保留当前输入值。
+  Future<String?> _fetchRemoteVersionCode() async {
+    try {
+      return await CopySettingsRemote().fetchVersionCode();
+    } catch (e, stack) {
+      unawaited(
+        AppLogger.instance.recordWarning(
+          '拉取 COPY versionCode 失败: $e',
+          stackTrace: stack,
+          source: 'copy_settings_remote',
+        ),
+      );
+      return null;
     }
   }
 

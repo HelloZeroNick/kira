@@ -8,11 +8,30 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripVTControlCharacters } from 'node:util';
+import { createTuiBackend } from './tui_backend.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const NAME = 'kira';
 const READY = /Flutter run key commands\.|A Dart VM Service/;
 const ERRORS = /Unhandled Exception|\bError:|EXCEPTION|Hot reload was rejected|Reloading failed|Restart failed/i;
+// Windows 桌面端反复出现的辅助功能树告警与热重载无关，不能当作本次操作失败。
+const BENIGN = /accessibility_bridge\.cc\(\d+\)\] Failed to update ui::AXTree|Problem (?:getting|setting) monitor brightness/i;
+
+function actionable(text) {
+  return text.split('\n').filter(line => !BENIGN.test(line)).join('\n');
+}
+
+// 终端的本次新增输出可能夹带上一次失败尝试留下的报错；只保留最后一次
+// 编译开始之后的内容，避免旧错误掩盖本次热重载的结果。
+function currentAttempt(text) {
+  const lines = text.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (/Performing hot (?:reload|restart)\.\.\./.test(lines[i])) {
+      return lines.slice(i + 1).join('\n');
+    }
+  }
+  return text;
+}
 
 function outputLines(text) {
   return stripVTControlCharacters(text).replace(/\r/g, '').split('\n').filter(line => line.trim());
@@ -35,6 +54,8 @@ function newOutput(before, after) {
 export function createDriver({
   invoke = args => spawnSync('hc', args, { encoding: 'utf8', windowsHide: true }),
   invokeApp = args => spawnSync('herdr-app', args, { encoding: 'utf8', windowsHide: true }),
+  invokeHerdr = args => spawnSync('herdr', args, { encoding: 'utf8', windowsHide: true }),
+  readProcessTable,
   root = ROOT,
   env = process.env,
   windows = process.platform === 'win32',
@@ -49,8 +70,22 @@ export function createDriver({
   const authKey = (env.COPY_AUTH_KEY || '').trim();
   const redact = value => authKey ? String(value).replaceAll(authKey, '[REDACTED]') : String(value);
 
-  function hc(args, { waiting = false } = {}) {
-    const result = invoke([args[0], '--json', ...args.slice(1)]);
+  let backend = 'app';
+  const tui = createTuiBackend({ invoke: invokeHerdr, root, project, device, target: env.KIRA_TARGET, authKey, windows, env, newOutput, output, readProcessTable });
+
+  function selectBackend(requested) {
+    if (!['auto', 'app', 'tui'].includes(requested)) throw new Error('后端必须为 auto、app 或 tui');
+    if (requested !== 'auto') return requested;
+    if (env.HERDR_ENV === '1' && env.HERDR_PANE_ID) return 'tui';
+    if (env.HC_TERMINAL_ID) return 'app';
+    const probe = invokeApp(['ls']);
+    if (!probe.error && probe.status === 0) return 'app';
+    const other = invokeHerdr(['workspace', 'list']);
+    if (!other.error && other.status === 0) return 'tui';
+    throw new Error(`没有可连接的 Herdr 后端。app: ${probe.error?.message || probe.stderr || probe.stdout}; TUI: ${other.error?.message || other.stderr || other.stdout}`);
+  }
+
+  function decode(result, args, waiting) {
     if (result.error) throw result.error;
     let data;
     try {
@@ -62,6 +97,11 @@ export function createDriver({
       throw new Error(data.error?.message || result.stderr || JSON.stringify(data));
     }
     return data;
+  }
+
+  function hc(args, { waiting = false } = {}) {
+    const result = (backend === 'tui' ? tui.invoke : invoke)([args[0], '--json', ...args.slice(1)]);
+    return result instanceof Promise ? result.then(value => decode(value, args, waiting)) : decode(result, args, waiting);
   }
 
   function app(args) {
@@ -105,7 +145,8 @@ export function createDriver({
   function terminal() {
     const list = hc(['ls', '--all', '--label', `kira.project=${project}`, '--label', 'kira.role=run']);
     if (!Array.isArray(list.terminals)) throw new Error('hc ls 返回的 terminals 不是列表');
-    const owned = list.terminals.filter(t => /^t[0-9a-z]+$/.test(t.address) && normalize(t.cwd) === project);
+    const addressPattern = backend === 'tui' ? /^w\d+:p\d+$/ : /^t[0-9a-z]+$/;
+    const owned = list.terminals.filter(t => addressPattern.test(t.address) && normalize(t.cwd) === project);
     const live = owned.filter(t => t.state === 'live');
     if (live.length > 1) throw new Error('找到多个 kira 运行终端，请先检查 hc ls，避免控制错误进程');
     const selected = live[0] || owned.at(-1);
@@ -132,7 +173,17 @@ export function createDriver({
   function read(t, lines = 200) {
     const data = hc(['read', t.address, '--lines', String(lines)]);
     if (typeof data.text !== 'string') throw new Error('hc read 未返回终端文本');
-    if (isFlutter(t) && READY.test(data.text)) rememberReady(t);
+    if (isFlutter(t) && t.labels?.['kira.ready'] !== 'true') {
+      let readyText = data.text;
+      if (!READY.test(readyText) && lines < 5000) {
+        // 初次连接时启动提示可能已滚出短日志；从历史确认后持久记录，
+        // 不能把「近期没有启动提示」当成「Flutter 尚未就绪」。
+        const history = hc(['read', t.address, '--lines', '5000']);
+        if (typeof history.text !== 'string') throw new Error('hc read 未返回终端文本');
+        readyText = history.text;
+      }
+      if (READY.test(readyText)) rememberReady(t);
+    }
     return data.text;
   }
 
@@ -175,11 +226,11 @@ export function createDriver({
     return 0;
   }
 
-  function waitReady(t) {
+  async function waitReady(t) {
     let current = hc(['get', t.address]);
     let text = read(current);
     if (!ready(current, text) && isFlutter(current)) {
-      wait(t, 'Flutter run key commands.', 300);
+      await wait(t, 'Flutter run key commands.', 300);
       current = hc(['get', t.address]);
       text = read(current);
     }
@@ -207,7 +258,7 @@ export function createDriver({
     // 编译期注入兼容 Windows 和 Android；输出中不显示密钥。
     if (authKey) flutter.push(`--dart-define=COPY_AUTH_KEY=${authKey}`);
     const command = windows ? ['cmd.exe', '/d', '/s', '/c', flutter.join(' ')] : flutter;
-    const spaceId = workspace();
+    const spaceId = backend === 'app' ? workspace() : null;
     output.log(`创建 Herdr 终端 "${NAME}"：flutter run -d ${device}`);
     const t = hc([
       'run', '--bg', '--outlive-parent', '--no-notify', '--name', NAME, '--cwd', root,
@@ -217,7 +268,7 @@ export function createDriver({
       '--', ...command,
     ]);
     if (typeof t.address !== 'string') throw new Error('hc run 未返回终端地址');
-    nameTab(t);
+    if (backend === 'app') nameTab(t);
     if (!opts.wait) {
       output.log(`已后台启动 (${t.address})。查看进度: node .claude/skills/run-kira/driver.mjs log 40`);
       return 0;
@@ -225,7 +276,7 @@ export function createDriver({
     return waitReady(t);
   }
 
-  function interactive(key, label, marker, opts) {
+  async function interactive(key, label, marker, opts) {
     const t = terminal();
     if (!isFlutter(t)) {
       output.error(`DEAD — 没有可控制的 flutter run，无法${label}。`);
@@ -244,7 +295,7 @@ export function createDriver({
     let after = read(t);
     let fresh = newOutput(before, after);
     if (key === 'q') {
-      if (hc(['get', t.address]).state === 'live') wait(t, null, 30);
+      if (hc(['get', t.address]).state === 'live') await wait(t, null, 30);
       after = read(t);
       show(after);
       if (hc(['get', t.address]).state === 'finished') {
@@ -252,17 +303,19 @@ export function createDriver({
         return 0;
       }
     } else {
-      if (!ERRORS.test(fresh) && !marker.test(fresh)) {
-        wait(t, key === 'r' ? 'Reloaded ' : 'Restarted application', 60);
+      const attempt = currentAttempt(fresh);
+      if (!ERRORS.test(actionable(attempt)) && !marker.test(attempt)) {
+        await wait(t, key === 'r' ? 'Reloaded ' : 'Restarted application', 60);
         after = read(t);
         fresh = newOutput(before, after);
       }
       show(after);
-      if (ERRORS.test(fresh)) {
+      const result = currentAttempt(fresh);
+      if (ERRORS.test(actionable(result))) {
         output.error('⚠ 本次操作出现异常或被拒绝，请按上方实际输出排查。');
         return 2;
       }
-      if (marker.test(fresh) && isFlutter(hc(['get', t.address]))) {
+      if (marker.test(result) && isFlutter(hc(['get', t.address]))) {
         output.log(`✓ ${label}完成。`);
         return 0;
       }
@@ -271,7 +324,7 @@ export function createDriver({
     return 1;
   }
 
-  function stop(opts) {
+  async function stop(opts) {
     const t = terminal();
     if (!t) {
       output.log('kira 终端不存在，无需停止。');
@@ -281,9 +334,14 @@ export function createDriver({
       output.log(`将停止并清理 kira 终端 ${t.address}，未传 --yes，已跳过。`);
       return 0;
     }
+    if (backend === 'tui') {
+      hc(['rm', t.address]);
+      output.log(`已停止并清理 TUI pane ${t.address}。`);
+      return 0;
+    }
     if (t.state === 'live') {
       hc(['kill', t.address]);
-      if (hc(['get', t.address]).state === 'live') wait(t, null, 30);
+      if (hc(['get', t.address]).state === 'live') await wait(t, null, 30);
       if (hc(['get', t.address]).state !== 'finished') throw new Error('终端尚未退出，未清理记录');
     }
     hc(['rm', t.address]);
@@ -302,8 +360,13 @@ export function createDriver({
   }
 
   return {
-    execute(argv) {
+    async execute(argv) {
       try {
+        argv = [...argv];
+        const backendIndex = argv.indexOf('--backend');
+        const requested = backendIndex < 0 ? env.KIRA_HERDR_BACKEND || 'auto' : argv[backendIndex + 1];
+        if (backendIndex >= 0) argv.splice(backendIndex, 2);
+        backend = selectBackend(requested);
         if (argv.includes('--wait') && argv.includes('--no-wait')) throw new Error('--wait 与 --no-wait 不能同时使用');
         const opts = { yes: argv.includes('--yes'), wait: argv.includes('--wait'), enter: argv.includes('--enter') };
         const [cmd, ...rest] = argv.filter(arg => !['--yes', '--wait', '--no-wait', '--enter'].includes(arg));
@@ -311,11 +374,11 @@ export function createDriver({
           case 'has': return has();
           case 'status': return status();
           case 'log': return log(Number(rest[0] || '40'));
-          case 'start': return start(opts);
-          case 'reload': return interactive('r', '热重载 (r)', /\bReloaded\s/, opts);
-          case 'restart': return interactive('R', '热重启 (R)', /Restarted application/, opts);
-          case 'quit': return interactive('q', '退出应用 (q)', null, opts);
-          case 'stop': return stop(opts);
+          case 'start': return await start(opts);
+          case 'reload': return await interactive('r', '热重载 (r)', /\bReloaded\s/, opts);
+          case 'restart': return await interactive('R', '热重启 (R)', /Restarted application/, opts);
+          case 'quit': return await interactive('q', '退出应用 (q)', null, opts);
+          case 'stop': return await stop(opts);
           case 'send': return send(rest, opts);
           default: throw new Error('用法见 .claude/skills/run-kira/SKILL.md');
         }
@@ -328,5 +391,5 @@ export function createDriver({
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  process.exitCode = createDriver().execute(process.argv.slice(2));
+  process.exitCode = await createDriver().execute(process.argv.slice(2));
 }
