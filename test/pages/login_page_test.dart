@@ -219,6 +219,42 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  group('密码保险箱', () {
+    /// 账号密码表单必须整体处在一个 AutofillGroup 里，并且两个框各自标好
+    /// 系统能识别的凭据语义。缺少任一项，系统保险箱都不会把它当成登录表单，
+    /// 聚焦时不弹候选、登录成功也不弹保存。
+    void expectVaultWiredForm(WidgetTester tester) {
+      expect(find.byType(AutofillGroup), findsOneWidget);
+
+      final usernameField = tester.widget<TextField>(
+        find.byKey(const ValueKey('login-username-field')),
+      );
+      final passwordField = tester.widget<TextField>(
+        find.byKey(const ValueKey('login-password-field')),
+      );
+      expect(usernameField.autofillHints, const [AutofillHints.username]);
+      expect(passwordField.autofillHints, const [AutofillHints.password]);
+    }
+
+    testWidgets('热辣登录表单接入密码保险箱', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      await UserManager().init();
+      await pumpLogin(tester);
+
+      expectVaultWiredForm(tester);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('拷贝登录表单接入密码保险箱', (tester) async {
+      SharedPreferences.setMockInitialValues({'login_source': 'copy'});
+      await UserManager().init();
+      await pumpLogin(tester);
+
+      expectVaultWiredForm(tester);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   group('COPY 登录通道', () {
     setUp(() {
       // 测试用固定串，与真实协议常量无关：只为让签名密钥「就绪」，

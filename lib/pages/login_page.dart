@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -232,6 +233,7 @@ class _LoginPageState extends State<LoginPage> {
       );
       if (!mounted) return;
       if (saved) {
+        _saveToPasswordVault();
         Navigator.pop(context, true);
       } else {
         setState(() {
@@ -274,6 +276,7 @@ class _LoginPageState extends State<LoginPage> {
         extra: (username: username, password: password),
       );
       if (result == true && mounted) {
+        _saveToPasswordVault();
         Navigator.pop(context, true);
       }
       return;
@@ -297,6 +300,7 @@ class _LoginPageState extends State<LoginPage> {
         if (session != null) {
           _user.refreshCopyCredentialInBackground(session, api: _userApi);
         }
+        _saveToPasswordVault();
         Navigator.pop(context, true);
       } else {
         setState(() {
@@ -541,7 +545,7 @@ class _LoginPageState extends State<LoginPage> {
               _buildCopyChannelSelector(),
             ],
             const SizedBox(height: AppSpacing.lg),
-            ..._buildAccountPasswordForm(
+            _buildAccountPasswordForm(
               context,
               onSubmit: _useCopyLogin ? _loginCopy : _loginHot,
               showRememberMe: !_useCopyLogin,
@@ -679,53 +683,81 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  List<Widget> _buildAccountPasswordForm(
+  /// 账号密码表单。整体包在 [AutofillGroup] 里，并把两个输入框标成系统能识别的
+  /// 凭据字段（账号 / 密码），这样密码保险箱、第三方密码管理器以及鸿蒙的
+  /// `autoFillManager` 才肯把它当成一个注册单元：聚焦时弹出候选项，登录成功后
+  /// 由 [_saveToPasswordVault] 触发保存。缺了分组，两个框只是两个互不相干的
+  /// 普通文本框。
+  Widget _buildAccountPasswordForm(
     BuildContext context, {
     required Future<void> Function() onSubmit,
     bool showRememberMe = true,
   }) {
     final l10n = AppLocalizations.of(context)!;
-    return [
-      TextField(
-        key: const ValueKey('login-username-field'),
-        controller: _usernameCtrl,
-        focusNode: _usernameFocus,
-        decoration: InputDecoration(
-          labelText: l10n.profileUsernameLabel,
-          prefixIcon: const Icon(Icons.person_outline),
-          border: OutlineInputBorder(borderRadius: AppRadius.mdR),
-        ),
-        textInputAction: TextInputAction.next,
-        onSubmitted: (_) => _passwordFocus.requestFocus(),
-      ),
-      const SizedBox(height: AppSpacing.lg),
-      TextField(
-        key: const ValueKey('login-password-field'),
-        controller: _passwordCtrl,
-        focusNode: _passwordFocus,
-        obscureText: _obscure,
-        decoration: InputDecoration(
-          labelText: l10n.profilePasswordLabel,
-          prefixIcon: const Icon(Icons.lock_outline),
-          suffixIcon: IconButton(
-            icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility),
-            onPressed: () => setState(() => _obscure = !_obscure),
+    return AutofillGroup(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            key: const ValueKey('login-username-field'),
+            controller: _usernameCtrl,
+            focusNode: _usernameFocus,
+            // 拷贝站用账号登录，热辣站也是账号：两者都归为 username。
+            autofillHints: const [AutofillHints.username],
+            decoration: InputDecoration(
+              labelText: l10n.profileUsernameLabel,
+              prefixIcon: const Icon(Icons.person_outline),
+              border: OutlineInputBorder(borderRadius: AppRadius.mdR),
+            ),
+            textInputAction: TextInputAction.next,
+            onSubmitted: (_) => _passwordFocus.requestFocus(),
           ),
-          border: OutlineInputBorder(borderRadius: AppRadius.mdR),
-        ),
-        textInputAction: TextInputAction.done,
-        onSubmitted: (_) => onSubmit(),
+          const SizedBox(height: AppSpacing.lg),
+          TextField(
+            key: const ValueKey('login-password-field'),
+            controller: _passwordCtrl,
+            focusNode: _passwordFocus,
+            autofillHints: const [AutofillHints.password],
+            obscureText: _obscure,
+            decoration: InputDecoration(
+              labelText: l10n.profilePasswordLabel,
+              prefixIcon: const Icon(Icons.lock_outline),
+              suffixIcon: IconButton(
+                icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility),
+                onPressed: () => setState(() => _obscure = !_obscure),
+              ),
+              border: OutlineInputBorder(borderRadius: AppRadius.mdR),
+            ),
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => onSubmit(),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          if (showRememberMe)
+            CheckboxListTile(
+              value: _rememberMe,
+              onChanged: (v) => setState(() => _rememberMe = v ?? false),
+              title: Text(l10n.profileRememberAccountLabel),
+              controlAffinity: ListTileControlAffinity.leading,
+              contentPadding: EdgeInsets.zero,
+            ),
+        ],
       ),
-      const SizedBox(height: AppSpacing.sm),
-      if (showRememberMe)
-        CheckboxListTile(
-          value: _rememberMe,
-          onChanged: (v) => setState(() => _rememberMe = v ?? false),
-          title: Text(l10n.profileRememberAccountLabel),
-          controlAffinity: ListTileControlAffinity.leading,
-          contentPadding: EdgeInsets.zero,
-        ),
-    ];
+    );
+  }
+
+  /// 登录成功后通知系统保存这份账号密码。
+  ///
+  /// Android/iOS 走各自的 AutofillService，鸿蒙走 `autoFillManager`：
+  /// flutter_ohos 的 `OhosAutoFillHelper` 会在 `finishAutofillContext` 到来时
+  /// 把当前 [AutofillGroup] 的字段值拼成 ViewData 交给系统保险箱，由系统弹
+  /// 「保存密码」确认框。时机必须在账号密码还留在输入框、分组还没销毁之前，
+  /// 也就是鉴权成功、`Navigator.pop` 之前。
+  ///
+  /// 系统不支持（低版本、未启用密码保险箱）时该调用是空操作，不需要判断平台。
+  /// 不传 `shouldSave` 即默认 true（保存），与 Android `AutofillManager.commit()` 等价。
+  void _saveToPasswordVault() {
+    TextInput.finishAutofillContext();
   }
 }
 
