@@ -276,40 +276,24 @@ jobs:
           tag="${{ steps.collect.outputs.release_tag }}"
           hap="${{ steps.collect.outputs.hap_path }}"
 
-          # 正文：版本号 + 该 tag 相对上一个 tag 的 feat/fix 标题（与旧 build-ci
-          # 的日志风格一致），手动 dispatch 时补构建说明。
-          {
-            echo "Kira 鸿蒙版 ${tag}"
-            echo
-            prev="$(git tag --sort=-v:refname | grep -vx "$tag" | head -n1 || true)"
-            if [[ -n "$prev" ]]; then
-              git log --pretty=format:"%s" "${prev}..HEAD" \
-                | grep -E '(^|[[:space:]])(feat|fix|style)[(:]' \
-                | sed 's/^/- /' || true
-            else
-              git log --pretty=format:"%s" -30 \
-                | grep -E '(^|[[:space:]])(feat|fix|style)[(:]' \
-                | sed 's/^/- /' || true
-            fi
-            if [[ -n "${NOTE:-}" ]]; then
-              echo
-              echo
-              echo "$NOTE"
-            fi
-            echo
-            echo "> 鸿蒙 arm64 HAP，CI 以 --no-codesign 构建，安装前需自行签名。"
-          } > release-notes.md
+          # 正文来源必须是仓库里的 docs/CHANGELOG_OHOS.md：它是发版前经用户
+          # 审查批准的日志（整文件覆盖式维护），不能现场用 git log 生成——
+          # checkout 不取历史 tag，浅克隆下 git log 区间为空，v1.7.7 的
+          # Release 正文就因此只剩标题。dispatch 场景才追加构建说明。
+          notes="docs/CHANGELOG_OHOS.md"
+          test -f "$notes" || { echo "::error::缺少 $notes，无法生成 Release 正文" >&2; exit 1; }
 
           if gh release view "$tag" --repo="$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            # 已存在的 Release：只替换同名 HAP 资产，不动正文与其它资产。
+            # 已存在的 Release：替换同名 HAP 资产，正文以获准日志为准。
             gh release upload "$tag" "$hap" --repo="$GITHUB_REPOSITORY" --clobber
-            echo "已更新 Release $tag 的 HAP 资产"
+            gh release edit "$tag" --repo="$GITHUB_REPOSITORY" --notes-file "$notes"
+            echo "已更新 Release $tag 的 HAP 资产与正文"
           else
             gh release create "$tag" "$hap" \
               --repo="$GITHUB_REPOSITORY" \
               --target="$GITHUB_SHA" \
               --title="Kira 鸿蒙版 ${tag}" \
-              --notes-file release-notes.md \
+              --notes-file "$notes" \
               --latest
             echo "已创建 Release $tag"
           fi
