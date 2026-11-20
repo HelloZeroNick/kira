@@ -28,6 +28,7 @@ import { GeneratedPluginRegistrant } from '../plugins/GeneratedPluginRegistrant'
 import KiraVolumeChannel from '../plugins/KiraVolumeChannel';
 import KiraAppIconChannel from '../plugins/KiraAppIconChannel';
 import KiraCryptoChannel from '../plugins/KiraCryptoChannel';
+import KiraDownloadDirChannel from '../plugins/KiraDownloadDirChannel';
 import Log from '@ohos/flutter_ohos/src/main/ets/util/Log';
 import { Want, AbilityConstant } from '@kit.AbilityKit';
 import { uri } from '@kit.ArkTS';
@@ -59,6 +60,7 @@ export default class EntryAbility extends FlutterAbility {
     flutterEngine.getPlugins()?.add(new KiraVolumeChannel());
     flutterEngine.getPlugins()?.add(new KiraAppIconChannel());
     flutterEngine.getPlugins()?.add(new KiraCryptoChannel());
+    flutterEngine.getPlugins()?.add(new KiraDownloadDirChannel());
   }
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {

@@ -121,7 +121,7 @@ extension DownloadManagerDeleteMigratePart on DownloadManager {
     Directory newRoot, {
     void Function(DownloadMigrationProgress progress)? onProgress,
   }) async {
-    await newRoot.create(recursive: true);
+    await DownloadManager.ensureDirectoryQuietly(newRoot);
 
     final pathWords = _manifest.keys.toList();
     final total = pathWords.length;

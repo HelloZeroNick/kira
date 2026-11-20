@@ -11,6 +11,7 @@ import '../models/novel.dart';
 import '../models/novel_download.dart';
 import '../models/novel_volume_snapshot.dart';
 import 'app_logger.dart';
+import 'app_platform.dart';
 import 'json_helpers.dart';
 
 /// Durable, account-independent local books. Nothing under this root is a cache.
@@ -69,8 +70,15 @@ class NovelDownloadStore {
 
   Future<void> _initialize(String? path) async {
     final root = path == null ? await _directory() : Directory(path);
-    await root.create(recursive: true);
-    _root = Directory(await root.resolveSymbolicLinks());
+    // 鸿蒙公共目录由系统 Picker 建好并授权，POSIX 的 create/resolve 都会失败。
+    final ohosExternal =
+        AppPlatform.isOhos && !root.path.contains('/data/storage/');
+    if (ohosExternal) {
+      _root = root;
+    } else {
+      await root.create(recursive: true);
+      _root = Directory(await root.resolveSymbolicLinks());
+    }
     try {
       final file = await _file(manifestName);
       if (!await file.exists()) return;
@@ -592,7 +600,12 @@ class NovelDownloadStore {
 
   Future<void> _atomicWrite(File file, List<int> bytes) async {
     await beforeWrite?.call(file.path);
-    await file.parent.create(recursive: true);
+    try {
+      await file.parent.create(recursive: true);
+    } catch (e) {
+      // 鸿蒙公共目录由系统授权，POSIX 层建子目录可能被拒；写入时再报错。
+      if (!AppPlatform.isOhos) rethrow;
+    }
     final temporary = File(
       '${file.path}.${DateTime.now().microsecondsSinceEpoch}.tmp',
     );
@@ -686,6 +699,11 @@ class NovelDownloadStore {
   /// cannot bypass overlap protection.
   static Future<String> canonicalDirectory(String value) async {
     var directory = Directory(p.normalize(p.absolute(value)));
+    // 鸿蒙公共目录（Download/...）在 POSIX 层不可读，resolveSymbolicLinks 会失败，
+    // 直接按规范化后的绝对路径返回。
+    if (AppPlatform.isOhos && !directory.path.contains('/data/storage/')) {
+      return p.normalize(p.absolute(value));
+    }
     final missing = <String>[];
     while (!await directory.exists()) {
       final parent = directory.parent;
@@ -740,15 +758,21 @@ class NovelDownloadStore {
     try {
       await waitForWrites();
       final targetDirectory = Directory(destination);
-      if (await targetDirectory.exists()) {
-        if (!await targetDirectory.list(followLinks: false).isEmpty) {
-          throw StateError('目标目录必须为空，不能覆盖已有数据');
+      // 鸿蒙的公共目录由系统 Picker 授权，POSIX 层的 exists/create/probe 都不适用。
+      // 公共目录（Download/...）不在应用沙箱 /data/storage 下，走系统授权写入。
+      final ohosExternal =
+          AppPlatform.isOhos && !destination.contains('/data/storage/');
+      if (!ohosExternal) {
+        if (await targetDirectory.exists()) {
+          if (!await targetDirectory.list(followLinks: false).isEmpty) {
+            throw StateError('目标目录必须为空，不能覆盖已有数据');
+          }
+        } else {
+          await targetDirectory.create(recursive: true);
+          createdDirectories.add(targetDirectory);
         }
-      } else {
-        await targetDirectory.create(recursive: true);
-        createdDirectories.add(targetDirectory);
+        await probeDirectory(destination);
       }
-      await probeDirectory(destination);
       final files = <String>{
         if (await (await _file(manifestName)).exists()) manifestName,
         for (final book in _books.values) ...[

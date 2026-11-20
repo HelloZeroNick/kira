@@ -11,6 +11,7 @@ import '../utils/app_platform.dart';
 import '../utils/download_directory.dart';
 import '../utils/download_manager.dart';
 import '../utils/novel_download_manager.dart';
+import '../utils/ohos_download_directory.dart';
 import '../utils/toast.dart';
 import 'app_sheet.dart';
 import 'settings_section.dart';
@@ -140,8 +141,7 @@ class _DownloadSettingsSheetState extends State<DownloadSettingsSheet> {
                     dense: true,
                     leading: const Icon(Icons.folder_open_outlined),
                     title: Text(
-                      downloads.customSaveDirectory ??
-                          l10n.downloadSaveLocationDefault,
+                      _saveLocationLabel(downloads.customSaveDirectory, l10n),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -222,8 +222,7 @@ class _DownloadSettingsSheetState extends State<DownloadSettingsSheet> {
                     dense: true,
                     leading: const Icon(Icons.folder_open_outlined),
                     title: Text(
-                      novels.customSaveDirectory ??
-                          l10n.downloadSaveLocationDefault,
+                      _saveLocationLabel(novels.customSaveDirectory, l10n),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -263,6 +262,15 @@ class _DownloadSettingsSheetState extends State<DownloadSettingsSheet> {
   Future<void> _changeNovelSaveLocation(NovelDownloadManager novels) async {
     final l10n = AppLocalizations.of(context)!;
     try {
+      if (AppPlatform.isOhos) {
+        final choice = await pickOhosDownloadDirectory(
+          context,
+          suffix: 'novel_downloads',
+        );
+        if (choice == null || !mounted) return;
+        await _applyNovelSaveDirectory(novels, choice.path, l10n);
+        return;
+      }
       final path = await pickDownloadDirectory(
         dialogTitle: l10n.downloadSaveLocationPickerTitle,
       );
@@ -391,6 +399,15 @@ class _DownloadSettingsSheetState extends State<DownloadSettingsSheet> {
   Future<void> _changeSaveLocation() async {
     final l10n = AppLocalizations.of(context)!;
     try {
+      if (AppPlatform.isOhos) {
+        final choice = await pickOhosDownloadDirectory(
+          context,
+          suffix: 'comic_downloads',
+        );
+        if (choice == null || !mounted) return;
+        await _applySaveDirectory(choice.path, l10n);
+        return;
+      }
       final path = await pickDownloadDirectory(
         dialogTitle: l10n.downloadSaveLocationPickerTitle,
       );
@@ -506,4 +523,12 @@ class _DownloadSettingsSheetState extends State<DownloadSettingsSheet> {
     setState(() {});
     showToast(context, l10n.downloadSaveLocationChanged);
   }
+}
+
+/// 保存位置标题：鸿蒙只有「内部目录/Download 专属目录」两种，直接显示名称，
+/// 其它平台仍显示用户选中的路径。
+String _saveLocationLabel(String? custom, AppLocalizations l10n) {
+  if (custom == null) return l10n.downloadSaveLocationDefault;
+  if (AppPlatform.isOhos) return 'Download/kira';
+  return custom;
 }

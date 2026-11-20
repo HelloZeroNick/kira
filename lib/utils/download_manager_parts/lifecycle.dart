@@ -54,7 +54,7 @@ extension DownloadManagerLifecyclePart on DownloadManager {
             defaultParentPath: (await getApplicationDocumentsDirectory()).path,
           )
         : await _rootDirectoryProvider();
-    await _rootDirectory!.create(recursive: true);
+    await DownloadManager.ensureDirectoryQuietly(_rootDirectory!);
 
     _applyScalarSettings(prefs);
 

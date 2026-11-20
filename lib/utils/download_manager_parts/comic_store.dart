@@ -62,7 +62,7 @@ extension DownloadManagerComicStorePart on DownloadManager {
     // 因此 coverPath 非空即代表本地封面可用。
     final hasLocalCover = stored?.coverPath?.isNotEmpty ?? false;
 
-    await _comicDirectory(pathWord).create(recursive: true);
+    await DownloadManager.ensureDirectoryQuietly(_comicDirectory(pathWord));
     await _writeComicMetadata(
       pathWord,
       LocalComicInfo(
@@ -103,7 +103,7 @@ extension DownloadManagerComicStorePart on DownloadManager {
   Future<File?> _downloadCoverIfNeeded(String pathWord, String coverUrl) async {
     if (coverUrl.isEmpty) return null;
     final comicDir = _comicDirectory(pathWord);
-    await comicDir.create(recursive: true);
+    await DownloadManager.ensureDirectoryQuietly(comicDir);
     final uri = Uri.parse(coverUrl);
     final request = await _httpClient
         .getUrl(uri)
@@ -209,7 +209,7 @@ extension DownloadManagerComicStorePart on DownloadManager {
     if (await dir.exists()) {
       await dir.delete(recursive: true);
     }
-    await dir.create(recursive: true);
+    await DownloadManager.ensureDirectoryQuietly(dir);
   }
 
   File get _manifestFile => File(

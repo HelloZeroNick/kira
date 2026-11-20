@@ -343,7 +343,7 @@ packages:
     description:
       path: "."
       ref: "br_v12.3.0"
-      resolved-ref: "2084fe3c77c37914e47b9724de9b7570b673a03c"
+      resolved-ref: "840594fe3314ee457fb7bd76478a03815463a0ce"
       url: "https://gitcode.com/hellozeronick/fluttertpc_file_picker.git"
     source: git
     version: "12.3.0"
@@ -428,10 +428,11 @@ packages:
   flutter_displaymode:
     dependency: "direct main"
     description:
-      name: flutter_displaymode
-      sha256: ecd44b1e902b0073b42ff5b55bf283f38e088270724cdbb7f7065ccf54aa60a8
-      url: "https://pub.dev"
-    source: hosted
+      path: "."
+      ref: master
+      resolved-ref: "3ad848c904ff4412c9d783ee4b6888106cc8a193"
+      url: "https://gitcode.com/oh-flutter/flutter_displaymode.git"
+    source: git
     version: "0.7.0"
   flutter_driver:
     dependency: transitive
@@ -740,6 +741,11 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.2.2"
+  integration_test:
+    dependency: "direct dev"
+    description: flutter
+    source: sdk
+    version: "0.0.0"
   intl:
     dependency: "direct main"
     description:
@@ -1134,6 +1140,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.5.4"
+  process:
+    dependency: transitive
+    description:
+      name: process
+      sha256: "4242ba3508d37e01808bdf71ad1d5bb93a8d671bf2e7450e6b1b353fb0808891"
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.0.6"
   pub_semver:
     dependency: transitive
     description:

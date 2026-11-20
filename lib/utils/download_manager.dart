@@ -711,7 +711,7 @@ class DownloadManager extends ChangeNotifier {
       .join(Platform.pathSeparator);
 
   Future<void> _writeTextFileAtomically(File file, String contents) async {
-    await file.parent.create(recursive: true);
+    await ensureDirectoryQuietly(file.parent);
     final temporary = File(
       '${file.path}.tmp.${DateTime.now().microsecondsSinceEpoch}',
     );
@@ -782,6 +782,22 @@ class DownloadManager extends ChangeNotifier {
     return p;
   }
 
+  /// 尽力创建目录；鸿蒙公共目录（系统 Picker 已建好并授权）在 POSIX 层会
+  /// 报 EPERM/EACCES，这种失败不能当成致命错误。
+  static Future<void> ensureDirectoryQuietly(Directory dir) async {
+    try {
+      if (!await dir.exists()) await dir.create(recursive: true);
+    } catch (e, st) {
+      if (!AppPlatform.isOhos) rethrow;
+      unawaited(
+        AppLogger.instance.recordWarning(
+          'Directory not creatable on ohos: ${dir.path} ($e)',
+          stackTrace: st,
+        ),
+      );
+    }
+  }
+
   /// 可写探测：在 [dir] 内创建并删除一个临时探针文件。
   static Future<bool> isDirectoryWritable(Directory dir) async {
     final probe = File(_joinPath([dir.path, '.kira_write_probe']));
@@ -812,9 +828,9 @@ class DownloadManager extends ChangeNotifier {
 
     final dir = Directory(customPath);
     try {
-      if (!await dir.exists()) {
-        await dir.create(recursive: true);
-      }
+      // 鸿蒙公共目录由系统 Picker 建好并授权；已授权时 POSIX 写探针可用，
+      // 未建好时 create 会 EPERM，此时按不可用回退默认目录。
+      await ensureDirectoryQuietly(dir);
       if (await isDirectoryWritable(dir)) return dir;
       unawaited(
         AppLogger.instance.recordWarning(
