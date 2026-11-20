@@ -29,6 +29,7 @@ import 'package:kira/theme/novel_reader_theme.dart';
 import 'package:kira/theme/reader_chrome.dart';
 import 'package:kira/utils/novel_bookmark_store.dart';
 import 'package:kira/utils/novel_download_store.dart';
+import 'package:kira/utils/novel_illustration_cache.dart';
 import 'package:kira/utils/novel_reading_store.dart';
 import 'package:kira/widgets/app_sheet.dart';
 import 'package:kira/widgets/error_retry_view.dart';
@@ -39,6 +40,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'test_helpers.dart';
 import 'utils/novel_download_store_test.dart' show saveFixture;
+
+class _UncachedIllustrations extends NovelIllustrationCache {
+  @override
+  Future<List<int>> loadBytes(
+    String url, {
+    required Future<List<int>> Function() load,
+  }) => load();
+}
 
 class _Api implements NovelApi {
   @override
@@ -265,19 +274,8 @@ Future<void> _mount(
         if (downloads != null)
           novelDownloadStoreProvider.overrideWithValue(downloads),
       ],
-      child: MaterialApp(
-        theme: theme,
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context).copyWith(
-            padding: padding,
-            textScaler: TextScaler.linear(textScale),
-          ),
-          child: child!,
-        ),
-        locale: const Locale('zh'),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: NovelReaderPage(
+      child: wrapWithApp(
+        NovelReaderPage(
           pathWord: book,
           volumeId: volume,
           resume: resume,
@@ -285,8 +283,25 @@ Future<void> _mount(
           initialParagraphIndex: initialParagraph,
           initialParagraphAlignment: initialAlignment,
           highlightOnEntry: highlightOnEntry,
-          source: source,
+          // 下载入口必须由页面组装下载优先来源，显式在线来源会绕过它。
+          source:
+              source ??
+              (downloads == null
+                  ? RepositoryNovelReaderSource(
+                      repository,
+                      illustrationCache: _UncachedIllustrations(),
+                    )
+                  : null),
           preferDownloads: preferDownloads,
+        ),
+        wrapInScaffold: false,
+        theme: theme,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            padding: padding,
+            textScaler: TextScaler.linear(textScale),
+          ),
+          child: child!,
         ),
       ),
     ),
@@ -2415,7 +2430,7 @@ void main() {
       findsOneWidget,
     );
 
-    await tester.tap(find.byKey(const ValueKey('novel-illustrations-close')));
+    await tester.tap(find.byKey(const ValueKey('novel-illustrations-back')));
     await _settle(tester);
     expect(find.byType(NovelReaderIllustrations), findsNothing);
     expect(find.byType(NovelReaderPage), findsOneWidget);

@@ -34,17 +34,28 @@ extension _UpdateCardActions on _UpdateCardState {
   bool get _isInstalling => InAppInstaller.instance.state.value.isBusy;
 
   Future<void> _openUrl(String url) async {
-    final launched = await launchUrl(
-      Uri.parse(url),
-      mode: LaunchMode.externalApplication,
-    );
-    if (!mounted) return;
-    if (!launched) {
-      showToast(
-        context,
-        AppLocalizations.of(context)!.updateOpenDownloadFailed,
-        isError: true,
+    try {
+      final launched = await launchUrl(
+        Uri.parse(url),
+        mode: LaunchMode.externalApplication,
       );
+      if (!mounted) return;
+      if (!launched) {
+        showToast(
+          context,
+          AppLocalizations.of(context)!.updateOpenDownloadFailed,
+          isError: true,
+        );
+      }
+    } catch (error, stack) {
+      unawaited(
+        AppLogger.instance.recordWarning(
+          error,
+          stackTrace: stack,
+          source: 'about.open_download',
+        ),
+      );
+      if (mounted) showToast(context, error.toString(), isError: true);
     }
   }
 
@@ -65,14 +76,15 @@ extension _UpdateCardActions on _UpdateCardState {
   /// 异常。因此鸿蒙只提供「手动下载」按钮，用户拿到 .hap 自行用 hdc 或
   /// 系统文件管理器安装。
   bool _canInstallInApp(ReleaseAsset asset) =>
-      Platform.isAndroid && asset.platform == AssetPlatform.android;
+      AppPlatform.supportsAutomaticPackageInstall &&
+      asset.platform == AssetPlatform.android;
 
   /// 当前设备架构对应的安装包；读不到架构或没有匹配时为 null，
   /// 调用方回退为全量展开展示。
   ///
   /// 鸿蒙按 `ohos-arm64` / `arm64` 匹配 .hap，Android 仍按 ABI 匹配 .apk。
   ReleaseAsset? _deviceAsset(List<ReleaseAsset> assets) {
-    if (isOhosPlatform()) {
+    if (AppPlatform.isOhos) {
       for (final a in assets) {
         if (a.platform != AssetPlatform.ohos) continue;
         // CI 产物名形如 kira-1.7.6+630-ohos-arm64-unsigned.hap，

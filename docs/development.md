@@ -25,7 +25,7 @@ flutter pub get --enforce-lockfile
 
 ## 调试运行
 
-移动端首次调试或执行 `flutter clean` 后，先构建一次：
+Android 首次调试或执行 `flutter clean` 后，先构建一次：
 
 ```sh
 flutter build apk --debug

@@ -106,12 +106,31 @@ Future<T> load() async {
 | 模块 | 前缀/键 | 文件 |
 | ---- | ---------- | ---- |
 | 漫画阅读历史 | `reading_history_$pathWord` / `..._group_$g` | `lib/utils/reading_history.dart` |
-| 阅读统计 | `reading_stats_v1` / `reader_reading_stats_enabled` | `lib/utils/reading_stats.dart` |
+| 阅读统计（漫画 / 轻小说） | `reading_stats_v1` | `lib/utils/reading_stats.dart` |
 | AI 章节总结 | `zhipu_chapter_summary_$chapterUuid` | `lib/utils/chapter_summary_cache.dart` |
 | 远程公告已读与检查记录 | `remote_notice_seen_keys_v2` / `remote_notice_sync_state_v1` | `lib/utils/remote_notice_service.dart` |
 | 分享链接已处理标记 | `shared_link_last_handled` | `lib/utils/kira_links.dart` |
 
 新增此类"按实体 ID 索引的历史/记录"时，沿用对应前缀，并确保 `cache_management_page._categoryOf` 能识别分类。
+
+### 阅读统计
+
+- `lib/utils/reading_stats.dart` 的 `ReadingStats` 在单个 JSON 字符串键 `reading_stats_v1` 中保留漫画的 `comicMeta` / `daily` / `since`，另加独立的 `novelMeta` / `novelDaily` / `novelSince`；旧漫画数据与旧备份可直接读取，缺少小说字段时按空处理。
+- `ReadingStats.initializeNovelsFromHistory` 在统计启用、小说统计全零时，只读取全部 `novel_reading_history_*` 断点初始化；补入书籍、累计已读卷与各书当前章节，不推算其他章节、字数、标签或每日活跃度。仅知卷而不知章节时，`chapters[volumeId]` 保留空 Map，冷启动仍保留卷数。完成标记 `novelHistoryInitialized` 是 `reading_stats_v1` 内的布尔字段（不是独立偏好键）；有非零数据时避免重复合并，但不阻止带旧标记的全零数据重新初始化。初始化与可见正文记录串行衔接，备份刷新等待初始化完成。清除小说或全部统计重置标记，下次加载可从保留的本地历史重新初始化；清除漫画不改小说标记。空历史时不重复写盘，后来恢复 / 新增本地历史后仍可在全零状态初始化。
+- 小说按书籍 `pathWord` 保存书名、标签、累计字数、卷 / 原始章节身份，以及最近阅读日的原始段落字符区间。区间键为 JSON 元组 `[volumeId, entryIndex, paragraphIndex]`，值为 UTF-16 半开区间列表；只存偏移，不存正文或排版页码。当天重叠区间只扫描新增非空白字符，跨重启仍去重，隔天重读重新累计；书 / 卷 / 章始终累计去重，活跃度保存每日字数。
+- 小说记录按需合并，最多每 5 秒自动落盘；漫画保留 800ms 防抖。返回、后台、备份通过 `ReadingStats.flush` 刷新。写失败保留待写状态供重试；`ReadingStats.clear(novel: true/false)` 只清对应类型，省略参数才清全部，清除 / 恢复期间阻止迟到记录复活旧数据。
+- `reading_stats_v1` 以 `string` 类型归入备份「阅读统计」，不属于普通设置；统计开关与展示配置由 `lib/models/reader_settings.dart` 的 `ReaderSettings` 管理，归入「设置」。以下键均以 `reader_reading_stats_` 为前缀，实际 prefs 类型与 `BackupSchema` 保持一致：
+
+| 键后缀 | prefs 类型 | 用途 |
+| ---- | ---- | ---- |
+| `enabled` | `bool` | 两类共用收集开关，默认关闭 |
+| `show_comics` / `show_novels` | `bool` | 两类默认显示，至少保留一类；隐藏不停止收集 |
+| `show_overview` / `show_tags` / `show_activity_chart` | `bool` | 漫画组件显隐 |
+| `novel_show_overview` / `novel_show_tags` / `novel_show_activity_chart` | `bool` | 小说组件显隐 |
+| `chart_style` / `novel_chart_style` | `int` | 各类独立的热力图 / 条形图样式 |
+| `section_order` / `novel_section_order` | `StringList` | 各类独立的组件排序 |
+
+恢复统计后调用 `ReadingStats.reloadFromPrefs` 丢弃旧内存副本；恢复设置后重载 `ReaderSettings`。只选择其中一个备份分类时不得顺带替换另一个分类。
 
 ## 3. 用户偏好（持久化）
 
@@ -218,7 +237,8 @@ Future<void> deleteAll();
 
 | 项 | 路径/键 | 管理 |
 | ---- | ---------- | ---- |
-| 阅读器图片 | `CacheManager(Config('readerImageCache', ...))`（`lib/pages/reader/reader_image_pipeline.dart` 的 `_readerImageCacheManager`） | 缓存管理页可清 |
+| 漫画阅读器图片 | `CacheManager(Config('readerImageCache', ...))`（`lib/pages/reader/reader_image_pipeline.dart` 的 `_readerImageCacheManager`） | 缓存管理页可清 |
+| 小说在线插图 | `NovelIllustrationCache`，独立 `CacheManager` key `novelIllustrationCache`（`lib/utils/novel_illustration_cache.dart`） | 有效期 7 天、最多 300 条；缓存管理页单独清理 |
 | 封面/头像图片 | `DefaultCacheManager`（默认 key `libCachedNetworkImageData`） | 缓存管理页可清 |
 | 漫画下载 | 默认 `getApplicationDocumentsDirectory()/comic_downloads/`，清单 `manifest.json`；可通过 `download_save_directory` 自定义为公共目录（Android，见下） | `DownloadManager` |
 | 漫画下载队列 | prefs 键 `download_queue_state_v1`：队列任务、暂停状态与批次失败快照，启动时恢复并自动续传（`main.dart` 初始化 `DownloadManager`） | `DownloadManager` |
@@ -228,10 +248,14 @@ Future<void> deleteAll();
 - 偏好键 `download_save_directory`（`download_` 前缀族），存绝对路径；缺省/置空 = 应用内部默认目录。
 - 启动解析：自定义目录存在、可创建且可写探测通过才使用，否则回退默认（如换机恢复备份后路径失效）。
 - 切换目录时逐漫画迁移（同卷 rename / 跨卷 copy+delete），并重写 `chapter.json` 的 `contents` 与 `comic.json` 的 `cover_path`/`comic.cover` 绝对路径前缀；manifest 只含相对标识无需改写。
+- iOS 固定使用应用私有 Documents 目录，两类下载设置只读；启动忽略旧自定义目录偏好但保留键值，管理器拒绝非空外部目录。不实现外部目录长期授权；备份、日志与字体仍可通过系统文件选择器导入导出。
+- iOS 容器位置改变时，`lib/utils/downloaded_file_path.dart` 的 `DownloadedFilePath.resolve` 在读取漫画页、封面与重试复用页时做受限重定位：旧容器的完整 `Documents/comic_downloads/<作品>/<章节>` 后缀必须对应当前归属目录，目标文件须存在；不按文件名搜索，不接受 URI 或目录穿越。原元数据不批量重写，真正缺失的成功页仍按损坏处理，部分失败页保持可补全。小说沿用根目录加相对路径。
 - Android 侧授权:API 30+ 走 `MANAGE_EXTERNAL_STORAGE`("所有文件访问"系统开关页,**不是**应用内运行时弹窗);API ≤29 期望退化到 `WRITE_EXTERNAL_STORAGE` 的运行时授权。两者都**必须**声明在 `android/app/src/main/AndroidManifest.xml` 的 `<uses-permission>` —— `permission_handler` 的 `determinePermissionStatus`/`requestPermissions` 会先查 manifest,缺声明时直接判定 `denied` 并 `continue`,不会调用 `launchSpecialPermission`,表现为点"保存位置"立刻提示"未授予存储权限"、无任何系统页或弹窗。选目录用 `file_picker`(`lib/utils/download_directory.dart`)。
   - 已知缺口:Android 10(API 29)下 `Permission.storage` 仅在 `WRITE_EXTERNAL_STORAGE` 已声明**且** `Environment.isExternalStorageLegacy()` 为真时才请求;当前未声明 `requestLegacyExternalStorage`,该分支 manifest names 为空,同样静默失败(API 24-28 不受影响)。
 
 `_ReaderImageFileService`（`lib/pages/reader/reader_image_cache.dart`）按响应 `Cache-Control: max-age` 解析有效期，默认 7 天，`no-cache` 立即过期。
+
+`NovelIllustrationCache.instance` 延迟创建独立 manager，按 URL 复用磁盘文件；同一 manager 的多个服务实例共享在途请求，完成/失败后释放字节。网络 miss 使用调用方的小说无凭据内容客户端，不复用漫画 fileService；缓存命中与写入前验证图片编码尺寸，坏项删除后重取，写入失败不阻断在线显示。清理递增 generation 并串行执行磁盘操作，旧在途请求不能回写已清缓存。在线插图缓存不纳入设置备份，清理不删除 `novel_text_cache_v1` 或 `novel_downloads`。
 
 ## 7. 备份/恢复（设置迁移）
 
@@ -274,7 +298,7 @@ Future<void> deleteAll();
 - 阅读历史和阅读设置每次读取当前 prefs，无一次性数据快照，恢复备份后无需注册额外单例重载。
 - `cache_novel_*`：按主机/账号指纹区分的元数据缓存，明确 TTL。
 - 应用支持目录 `novel_text_cache_v1`：整卷正文和对应目录的文件快照；缓存管理可单独清理，保留阅读历史。
-- 应用文档目录 `novel_downloads`（可改到自定义目录，键 `download_novel_save_directory`）：**永久下载**，与上面的可清理正文缓存是两套存储。带版本清单 `manifest_v1.json`，每卷保存同一版本的原始 TXT + 目录快照、书籍/卷元数据与插图 URL 映射。**启动只做轻量探测**：读两级清单 JSON，对每个被索引文件做「存在且长度相符」检查（不读正文、不算摘要、不解析文本），据此区分「已完成 / 部分完成 / 待修复」；缺失或长度不符立即标为「待修复」。摘要与正文合法性在真正读取该卷时（`readVolumeSnapshot`/`readImageBytes`）惰性校验，不符则降级。这样启动耗时不随离线库体积增长。删除只作用于被索引、被探测过的文件。
+- 应用文档目录 `novel_downloads`（非 iOS 可改到自定义目录，键 `download_novel_save_directory`）：**永久下载**，与上面的可清理正文缓存是两套存储。带版本清单 `manifest_v1.json`，每卷保存同一版本的原始 TXT + 目录快照、书籍/卷元数据与插图 URL 映射。**启动只做轻量探测**：读两级清单 JSON，对每个被索引文件做「存在且长度相符」检查（不读正文、不算摘要、不解析文本），据此区分「已完成 / 部分完成 / 待修复」；缺失或长度不符立即标为「待修复」。摘要与正文合法性在真正读取该卷时（`readVolumeSnapshot`/`readImageBytes`）惰性校验，不符则降级。这样启动耗时不随离线库体积增长。删除只作用于被索引、被探测过的文件。
 - `download_novel_queue_state_v1`：小说未完成下载队列（版本、暂停标记、任务列表）。完整成功后只删除任务记录，本地文件保留；启动时依据探测结果清理遗留完成记录，缺失/损坏转待修复，失败/暂停/部分完成任务保留。只持久化稳定来源标识（`CopyAccountSession.id`，游客为 `guest`）与主机，**不保存 token**；账号或线路变化后未完成任务暂停。`download_novel_concurrency` 控制并发（1–4）。管理器初始化与续传在首帧之后后台进行，不阻塞 `runApp`。
 - 清理边界：清正文缓存不动已下载内容；清下载不动阅读进度/历史/书签。退出账号不删除本机已下载内容。
 - `secure_mirror_copy_account_v1`：`SecureCredentialStore` 在私有 prefs 中保存的独立拷贝会话及迁移/退出标记，兼容读取旧裸键 `copy_account_v1`。不导出到普通设置或账号分类备份；退出附加账号不得清除其他凭据键。通过认证但尚无资料的账号使用随机 `local:` 标识；`account_id` 固定后不随资料补全或 Token 更新变化。主账号的同一标识以 `user_account_id` 保存，归入敏感账号备份分类；它不是 Token 或 Token 指纹。

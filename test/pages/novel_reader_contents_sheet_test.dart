@@ -14,12 +14,15 @@ import 'package:kira/pages/novel_reader_page.dart';
 import 'package:kira/pages/reader/reader_image_viewer.dart';
 import 'package:kira/pages/reader/reader_long_press_zoom.dart';
 import 'package:kira/providers/novel_providers.dart';
+import 'package:kira/repositories/novel_reader_source.dart';
 import 'package:kira/repositories/novel_repository.dart';
+import 'package:kira/utils/novel_illustration_cache.dart';
 import 'package:kira/utils/novel_reading_store.dart';
 import 'package:kira/widgets/app_sheet.dart';
 import 'package:kira/widgets/error_retry_view.dart';
 import 'package:kira/widgets/pinch_zoomable.dart';
 import 'package:kira/widgets/select_tile.dart';
+import 'package:material3_expressive_loading_indicator/material3_expressive_loading_indicator.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -116,6 +119,20 @@ class _Repository implements NovelRepository {
   );
 }
 
+class _UncachedIllustrations extends NovelIllustrationCache {
+  @override
+  Future<List<int>> loadBytes(
+    String url, {
+    required Future<List<int>> Function() load,
+  }) => load();
+}
+
+RepositoryNovelReaderSource _readerSource(_Repository repository) =>
+    RepositoryNovelReaderSource(
+      repository,
+      illustrationCache: _UncachedIllustrations(),
+    );
+
 class _Store implements NovelReadingStore {
   _Store(this.progress);
 
@@ -156,8 +173,30 @@ Future<void> _settle(WidgetTester tester) async {
     await tester.runAsync(() => Future<void>.delayed(Duration.zero));
     await tester.pump(const Duration(milliseconds: 20));
   }
-  // Memory-image decoding runs outside FakeAsync; finish the native codecs
-  // before requiring every loading animation (including cached rows) to settle.
+  // ImageDescriptor decoding happens before Image widgets exist. Under parallel
+  // tests, advancing the fake clock alone can leave its loading ticker running.
+  final loading = find.byWidgetPredicate(
+    (widget) =>
+        widget is ExpressiveLoadingIndicator ||
+        widget is LinearProgressIndicator,
+  );
+  for (
+    var attempt = 0;
+    attempt < 200 && loading.evaluate().isNotEmpty;
+    attempt++
+  ) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 10)),
+    );
+    await tester.pump(const Duration(milliseconds: 20));
+  }
+  expect(
+    loading,
+    findsNothing,
+    reason:
+        'Native decoding and directory requests must finish before settling',
+  );
+  // Then finish MemoryImage decoding before settling the remaining animations.
   for (final element in find.byType(Image).evaluate()) {
     final image = element.widget as Image;
     await tester.runAsync(() => precacheImage(image.image, element));
@@ -197,6 +236,7 @@ Future<_SheetResult> _openSheet(
                 heightFactor: 0.85,
                 child: NovelReaderContentsSheet(
                   repository: repository,
+                  source: _readerSource(repository),
                   pathWord: 'book',
                   volumeId: volumeId,
                   entryIndex: entryIndex,
@@ -229,6 +269,18 @@ void _closeSheet(WidgetTester tester) {
 
 Finder get _illustrationList =>
     find.byKey(const ValueKey('novel-illustrations-list'));
+
+Future<void> _returnFromIllustrations(WidgetTester tester) async {
+  final back = find.byKey(const ValueKey('novel-illustrations-back'));
+  if (back.hitTestable().evaluate().isEmpty) {
+    await tester.tapAt(tester.getCenter(_illustrationList));
+    // Single tap waits for the image's double-tap timeout before toggling chrome.
+    await tester.pump(const Duration(milliseconds: 350));
+    await _settle(tester);
+  }
+  expect(back.hitTestable(), findsOneWidget);
+  await tester.tap(back);
+}
 
 Finder _illustration(String name) => find.descendant(
   of: find.byType(NovelReaderIllustrations),
@@ -431,7 +483,7 @@ void main() {
     expect(scrollable.position.pixels, lessThan(beforeZoom));
     expect(find.text('彩图 A'), findsNothing);
     expect(find.text('彩图 B'), findsNothing);
-    await tester.tap(find.byKey(const ValueKey('novel-illustrations-close')));
+    await _returnFromIllustrations(tester);
     await _settle(tester);
 
     expect(find.byType(NovelReaderIllustrations), findsNothing);
@@ -519,7 +571,7 @@ void main() {
       await _settle(tester);
       expect(_illustrationList, findsOneWidget);
       expect(find.byKey(const ValueKey('novel-toc-entry-1')), findsNothing);
-      await tester.tap(find.byKey(const ValueKey('novel-illustrations-close')));
+      await _returnFromIllustrations(tester);
       await _settle(tester);
       expect(result.closed, isFalse);
       expect(result.selection, isNull);
@@ -568,7 +620,7 @@ void main() {
     expect(repository.api.imageRequests, [_imageA.content, _imageA.content]);
     expect(result.closed, isFalse);
     expect(repository.contentLoads, isEmpty);
-    await tester.tap(find.byKey(const ValueKey('novel-illustrations-close')));
+    await _returnFromIllustrations(tester);
     await _settle(tester);
     expect(
       tester
@@ -635,7 +687,7 @@ void main() {
     expect(find.textContaining('插图加载失败'), findsOneWidget);
     expect(repository.api.imageRequests, isEmpty);
     expect(result.closed, isFalse);
-    await tester.tap(find.byKey(const ValueKey('novel-illustrations-close')));
+    await _returnFromIllustrations(tester);
     await _settle(tester);
     expect(result.closed, isFalse);
     expect(result.selection, isNull);
@@ -669,15 +721,14 @@ void main() {
             novelApiProvider.overrideWithValue(repository.api),
             novelReadingStoreProvider.overrideWithValue(store),
           ],
-          child: const MaterialApp(
-            locale: Locale('zh'),
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
-            home: NovelReaderPage(
+          child: wrapWithApp(
+            NovelReaderPage(
               pathWord: 'book',
               volumeId: 'v1',
               resume: true,
+              source: _readerSource(repository),
             ),
+            wrapInScaffold: false,
           ),
         ),
       );
@@ -714,7 +765,7 @@ void main() {
       expect(find.text('彩图 A'), findsNothing);
       expect(find.text('彩图 B'), findsNothing);
       expect(store.writes, isEmpty);
-      await tester.tap(find.byKey(const ValueKey('novel-illustrations-close')));
+      await _returnFromIllustrations(tester);
       await _settle(tester);
       expect(store.writes, isEmpty);
       _closeSheet(tester);

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kira/models/app_theme_option.dart';
+import 'package:kira/models/network_settings.dart';
 import 'package:kira/models/user_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -85,7 +86,7 @@ void main() {
   );
   testSharedSetting(
     key: 'theme_color',
-    initial: appThemeOptions.first.id,
+    initial: defaultThemeOptionId,
     changed: 'teal',
     readFacade: () => user.themeColor,
     readStore: () => user.theme.themeColor,
@@ -95,7 +96,7 @@ void main() {
   );
   testSharedSetting(
     key: 'theme_variant',
-    initial: appThemeVariantOptions.first.variant,
+    initial: defaultThemeVariant,
     changed: DynamicSchemeVariant.vibrant,
     readFacade: () => user.themeVariant,
     readStore: () => user.theme.themeVariant,
@@ -135,8 +136,8 @@ void main() {
   );
   testSharedSetting(
     key: 'api_route',
-    initial: 0,
-    changed: 1,
+    initial: NetworkSettings.defaultApiRoute,
+    changed: 0,
     readFacade: () => user.apiRoute,
     readStore: () => user.network.apiRoute,
     writeFacade: user.setApiRoute,
@@ -191,11 +192,8 @@ void main() {
         'pref_display_mode_refresh_rate': -120,
       });
       await user.init(persistMigrations: false);
-      expect(user.themeColor, appThemeOptions.first.id);
-      expect(
-        user.themeVariantOption.variant,
-        appThemeVariantOptions.first.variant,
-      );
+      expect(user.themeColor, defaultThemeOptionId);
+      expect(user.themeVariantOption.variant, defaultThemeVariant);
       expect(
         user.darkModeCoverBrightness,
         UserManager.minDarkModeCoverBrightness,
@@ -209,8 +207,8 @@ void main() {
 
       await user.theme.setThemeColor('teal');
       await user.setThemeColor('unknown-color');
-      expect(user.theme.themeColor, appThemeOptions.first.id);
-      expect(prefs.getString('theme_color'), appThemeOptions.first.id);
+      expect(user.theme.themeColor, defaultThemeOptionId);
+      expect(prefs.getString('theme_color'), defaultThemeOptionId);
     },
   );
 

@@ -14,6 +14,7 @@ import '../models/novel.dart';
 import '../models/novel_reader_settings.dart';
 import '../models/novel_reader_status_settings.dart';
 import '../models/novel_reading_progress.dart';
+import '../models/reader_settings.dart';
 import '../providers/novel_providers.dart';
 import '../repositories/novel_reader_source.dart';
 import '../repositories/novel_repository.dart';
@@ -24,9 +25,11 @@ import '../theme/novel_reader_theme.dart';
 import '../theme/reader_chrome.dart';
 import '../utils/adaptive_motion.dart';
 import '../utils/app_logger.dart';
+import '../utils/app_platform.dart';
 import '../utils/novel_bookmark_store.dart';
 import '../utils/novel_reading_store.dart';
 import '../utils/reader_system_ui.dart';
+import '../utils/reading_stats.dart';
 import '../utils/toast.dart';
 import '../widgets/app_sheet.dart';
 import '../widgets/error_retry_view.dart';
@@ -41,8 +44,10 @@ import 'novel_reader/novel_reader_illustrations.dart';
 import 'novel_reader/novel_reader_page_view.dart';
 import 'novel_reader/novel_reader_settings_sheet.dart';
 import 'novel_reader/novel_reader_viewport.dart';
+import 'novel_reader/novel_visible_text_range.dart';
 
 part 'novel_reader_page_parts/continuous.dart';
+part 'novel_reader_page_parts/reading_stats.dart';
 part 'novel_reader_page_parts/view.dart';
 
 class NovelReaderPage extends ConsumerStatefulWidget {
@@ -137,6 +142,11 @@ class _NovelReaderPageState extends ConsumerState<NovelReaderPage>
   Object? _error;
   Timer? _saveTimer;
   Future<void> _lastWrite = Future<void>.value();
+  Future<void> _statsQueue = Future<void>.value();
+  final _statsSettings = ReaderSettings();
+  bool _statsEnabled = ReadingStats.isEnabled;
+  bool _statsForeground = true;
+  ModalRoute<dynamic>? _statsRoute;
   static Future<void>? _wakeQueue;
   DateTime _lastTimestamp = DateTime.fromMillisecondsSinceEpoch(0);
   late String _pathWord;
@@ -197,6 +207,11 @@ class _NovelReaderPageState extends ConsumerState<NovelReaderPage>
       ..addListener(_onBookmarksChanged);
     unawaited(_loadBookmarks());
     WidgetsBinding.instance.addObserver(this);
+    _statsSettings.addListener(_onReadingStatsSettingChanged);
+    _initializeReadingStats();
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    _statsForeground =
+        lifecycle == null || lifecycle == AppLifecycleState.resumed;
     // 与漫画阅读器一致：阅读期间窗口允许延伸进刘海/挖孔区（SHORT_EDGES）。
     // 否则沉浸模式下挖孔区域不随窗口扩展，露出一条纯黑的窗口背景。
     _systemUi.enter();
@@ -227,6 +242,7 @@ class _NovelReaderPageState extends ConsumerState<NovelReaderPage>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _statsRoute = ModalRoute.of(context);
     if (_systemPadding == null) {
       _systemPadding = MediaQuery.paddingOf(context);
       // 先保存常规系统栏 inset，再同步首次进入的沉浸模式。
@@ -281,14 +297,22 @@ class _NovelReaderPageState extends ConsumerState<NovelReaderPage>
   }
 
   Future<void> _setVolumeIntercept(bool enabled) async {
-    if (!_volumeChannelAvailable) return;
+    if (!AppPlatform.supportsReaderVolumeKeys || !_volumeChannelAvailable) {
+      return;
+    }
     try {
       await _volumeChannel.invokeMethod(enabled ? 'enable' : 'disable');
     } on MissingPluginException {
       // 桌面/测试环境没有音量键实现：静默降级，不再尝试。
       _volumeChannelAvailable = false;
-    } on PlatformException catch (error) {
-      debugPrint('Volume channel unavailable: $error');
+    } on PlatformException catch (error, stack) {
+      unawaited(
+        AppLogger.instance.recordWarning(
+          error,
+          stackTrace: stack,
+          source: 'novel_reader.volume_keys',
+        ),
+      );
       _volumeChannelAvailable = false;
     }
   }
@@ -789,7 +813,7 @@ class _NovelReaderPageState extends ConsumerState<NovelReaderPage>
       _saveTimer?.cancel();
       _saveTimer = Timer(
         const Duration(milliseconds: 350),
-        () => unawaited(_flush()),
+        () => unawaited(_flush(flushStats: false)),
       );
     }
     if (rebuild &&
@@ -805,14 +829,20 @@ class _NovelReaderPageState extends ConsumerState<NovelReaderPage>
   /// Enqueue synchronously, before the route's returned Future is completed.
   /// The store serializes reads/writes; every operation owns an immutable book /
   /// volume snapshot, so slow saves never acquire a newer volume's metadata.
-  Future<void> _flush() {
+  Future<void> _flush({bool flushStats = true}) {
     _saveTimer?.cancel();
+    _sampleReadingStats();
+    Future<void> finish() async {
+      await _lastWrite;
+      if (flushStats) await _flushReadingStats();
+    }
+
     final current = _viewerLocation;
     if (current != null) {
       _recordLocation(current, rebuild: false, debounce: false);
     }
     final progress = _pendingProgress;
-    if (progress == null) return _lastWrite;
+    if (progress == null) return finish();
     _pendingProgress = null;
     final request = _request;
     _lastWrite = _store.saveProgress(progress).catchError((
@@ -826,7 +856,7 @@ class _NovelReaderPageState extends ConsumerState<NovelReaderPage>
         _pendingProgress = progress;
       }
     });
-    return _lastWrite;
+    return finish();
   }
 
   void _onSliderValueChanged(double value) {
@@ -890,6 +920,7 @@ class _NovelReaderPageState extends ConsumerState<NovelReaderPage>
         illustrations: illustrations,
         loadBytes: (url) =>
             _source.loadImageBytes(_pathWord, detail.volume.id, url),
+        onClosed: _syncSystemUi,
       ),
     );
   }
@@ -915,7 +946,9 @@ class _NovelReaderPageState extends ConsumerState<NovelReaderPage>
         },
       ),
     );
-    if (!_active(session) || selection == null) return;
+    if (!_active(session)) return;
+    _syncSystemUi();
+    if (selection == null) return;
     if (selection is NovelReaderCatalogExit) {
       await _exitToDetail();
       return;
@@ -1238,12 +1271,16 @@ class _NovelReaderPageState extends ConsumerState<NovelReaderPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached) {
+    if (state != AppLifecycleState.resumed) {
+      // 在关闭前台闸门前补采最后一帧；之后连恢复/分页迟到回调也不可记账。
       unawaited(_flush());
+      if (_statsForeground) setState(() => _statsForeground = false);
       _setScreenOn(false);
-    } else if (state == AppLifecycleState.resumed) {
+    } else {
+      if (!_statsForeground) setState(() => _statsForeground = true);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _sampleReadingStats();
+      });
       _setScreenOn(_settings.keepScreenOn);
     }
   }
@@ -1287,6 +1324,7 @@ class _NovelReaderPageState extends ConsumerState<NovelReaderPage>
     _highlightFade?.dispose();
     _bookmarks.removeListener(_onBookmarksChanged);
     _statusSettings.removeListener(_onStatusSettingsChanged);
+    _statsSettings.removeListener(_onReadingStatsSettingChanged);
     WidgetsBinding.instance.removeObserver(this);
     _setScreenOn(false);
     // 正常返回已在 pop 时恢复；直接移除页面时仍需兜底。

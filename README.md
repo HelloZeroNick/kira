@@ -57,7 +57,7 @@
 
 ## 截图
 
-[![](https://files.seeusercontent.com/2026/11/06/bGa0/20261106180342267.png)](https://kira.caolib.qzz.io/)
+[![](https://files.seeusercontent.com/2026/11/15/Rb6x/20261115172824814.png)](https://kira.caolib.qzz.io/)
 
 <details>
   <summary>查看更多截图</summary>

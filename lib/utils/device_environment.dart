@@ -1,7 +1,7 @@
 import 'dart:ffi' show Abi;
 import 'dart:io' show Platform;
 
-import 'ohos_platform.dart';
+import 'app_platform.dart';
 
 /// 尽力探测当前设备的系统与 CPU 架构,用于「切换到预览版」提示里展示。
 ///
@@ -27,8 +27,8 @@ import 'ohos_platform.dart';
 }
 
 String? _osLabel() {
-  // 鸿蒙放最前：用字符串判断以兼容官方 SDK，见 ohos_platform.dart。
-  if (isOhosPlatform()) return 'HarmonyOS';
+  // 鸿蒙放最前：用字符串判断以兼容官方 SDK
+  if (AppPlatform.isOhos) return 'HarmonyOS';
   if (Platform.isAndroid) return 'Android';
   if (Platform.isIOS) return 'iOS';
   if (Platform.isWindows) return 'Windows';

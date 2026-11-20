@@ -3,7 +3,7 @@
 ## 维护范围
 
 - 两个活跃产品域：**漫画（拷贝 + 热辣）**与**轻小说**。动漫已彻底移除，不保留其兼容代码。
-- Android 是主维护目标，Windows 是开发/调试宿主；macOS/Linux 不手工维护，但仍有发布构建。不要添加 `pubspec.yaml` 的 `platforms:` 键，或仅为调试宿主引入平台原生依赖。
+- Android 与 iOS 是维护目标，Windows 是开发/调试宿主；macOS/Linux 桌面端不手工维护，但仍有发布构建。iOS 构建与真机验收边界见 `docs/platform-build.md`。不要添加 `pubspec.yaml` 的 `platforms:` 键，或仅为调试宿主引入平台原生依赖。
 - `android/`、`ios/`、`linux/`、`macos/`、`web/`、`windows/` 只放平台集成；静态资源放 `assets/` 并登记到 `pubspec.yaml`。
 - `ref/` 已被 gitignore 排除，仅作接口资料参考；不从中导入代码，不把它作为当前行为的证据。
 - 横向滑切 tab 与 GNav 胶囊导航是产品功能，重构时保留。返回首页/搜索页时键盘不应重新弹出：见 `dismiss_keyboard_observer.dart` 与 `test/routing/main_shell_focus_test.dart`。
