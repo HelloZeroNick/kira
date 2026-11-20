@@ -5,6 +5,14 @@
     "versionCode": 1000000,
     "versionName": "1.0.0",
     "icon": "$media:app_icon",
+    // 运行时备选图标（API 26+），由 KiraAppIconChannel 通过
+    // bundleManager.setAlternateIcon 切换；下标 0 表示恢复默认图标。
+    "alternateIcons": [
+      {
+        "name": "kira_alt_1",
+        "icon": "$media:ic_launcher_1"
+      }
+    ],
     "label": "$string:app_name"
   }
 }

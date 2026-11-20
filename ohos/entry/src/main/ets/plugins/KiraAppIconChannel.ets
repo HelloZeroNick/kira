@@ -1,19 +1,15 @@
 /*
- * 应用图标切换通道，对应 Android 的 "io.github.caolib.kira/app_icon"
- * （MainActivity 里切 launcher-alias 的那套）。
+ * 应用图标切换通道，对应 Android 的 "io.github.caolib.kira/app_icon"。
  *
- * 鸿蒙没有可运行时启停的 launcher alias，官方能力是 AppGallery Kit 的
- * 图标管理服务：图标先在 AGC「分发 > 服务 > 图标管理」上传并过审，客户端再用
- * selectDynamicIcon / disableDynamicIcon 切换。
+ * 鸿蒙用 app.json5 的 alternateIcons（API 26 起）+ bundleManager 的
+ * getAlternateIcons / setAlternateIcon 切换，图标随 HAP 打包，无需 AGC 上架。
  *
- * Dart 侧的语义是 [0, appLogoPaths.length) 的下标数组，这里把它映射成：
- *   index 0  → 恢复默认图标（disableDynamicIcon）
- *   index i  → 选第 i 个动态图标（icons[i - 1]）
- * 一个图标都没配（1006800010 No dynamic icon data）时，getAppIconIndex 返回 0、
- * setAppIcon 忽略写入，界面上的选项就会和实际不一致——所以调用方仍应按
- * 真实可用的图标数量决定是否展示入口。
+ * 下标映射与 Android 一致：[0, appLogoPaths.length)
+ *   index 0 → setAlternateIcon('')  恢复默认图标
+ *   index i → icons[i - 1].iconName
+ * 越界同样回默认。
  *
- * 约束：图标管理服务不支持模拟器，需真机；从 5.0.3(15) 起可用。
+ * API < 26 等失败场景由本通道直接在原生侧弹 toast，Dart 侧不感知差异。
  */
 import {
   FlutterPlugin,
@@ -23,23 +19,33 @@ import {
   MethodChannel,
   MethodResult,
 } from '@ohos/flutter_ohos';
-import { appInfoManager } from '@kit.AppGalleryKit';
-import { BusinessError } from '@kit.BasicServicesKit';
+import { bundleManager, common } from '@kit.AbilityKit';
+import { BusinessError, deviceInfo } from '@kit.BasicServicesKit';
+import { window } from '@kit.ArkUI';
 import Log from '@ohos/flutter_ohos/src/main/ets/util/Log';
 
 const TAG = 'KiraAppIconChannel';
 const CHANNEL = 'io.github.caolib.kira/app_icon';
-/** 「No dynamic icon data」：应用没有配置任何动态图标。 */
-const ERROR_NO_DYNAMIC_ICON = 1006800010;
+/** alternateIcons / setAlternateIcon 的起始 API 版本。 */
+const MIN_API_VERSION = 26;
+/** 未配置任何备选图标（等价于空列表）。 */
+const ERROR_GET_ALTERNATE_ICON = 17700311;
+/** 当前没有启用中的备选图标：恢复默认时视为成功。 */
+const ERROR_NO_ALTERNATE_ICON_ENABLED = 17700309;
+const UNSUPPORTED_CODE = 'app_icon_unsupported';
+const TOAST_UNSUPPORTED = '当前系统版本不支持切换桌面图标';
+const TOAST_FAILED = '桌面图标切换失败';
 
 export default class KiraAppIconChannel implements FlutterPlugin, MethodCallHandler {
   private channel: MethodChannel | null = null;
+  private context: common.Context | null = null;
 
   getUniqueClassName(): string {
     return 'KiraAppIconChannel';
   }
 
   onAttachedToEngine(binding: FlutterPluginBinding): void {
+    this.context = binding.getApplicationContext();
     this.channel = new MethodChannel(binding.getBinaryMessenger(), CHANNEL);
     this.channel.setMethodCallHandler(this);
   }
@@ -47,6 +53,7 @@ export default class KiraAppIconChannel implements FlutterPlugin, MethodCallHand
   onDetachedFromEngine(binding: FlutterPluginBinding): void {
     this.channel?.setMethodCallHandler(null);
     this.channel = null;
+    this.context = null;
   }
 
   onMethodCall(call: MethodCall, result: MethodResult): void {
@@ -64,28 +71,35 @@ export default class KiraAppIconChannel implements FlutterPlugin, MethodCallHand
   }
 
   private setAppIcon(call: MethodCall, result: MethodResult): void {
+    if (!isSupported()) {
+      this.toast(TOAST_UNSUPPORTED);
+      result.error(UNSUPPORTED_CODE, `需要 HarmonyOS API ${MIN_API_VERSION} 及以上`, null);
+      return;
+    }
     const index: number = (call.argument('index') as number) ?? 0;
-    this.queryIcons().then((icons: appInfoManager.DynamicIconInfo[]) => {
-      // index 0 表示恢复默认图标；越界时同样回落到默认，避免用户选中一个
-      // AGC 上并不存在的图标后桌面图标卡住不动。
-      if (index <= 0 || index > icons.length) {
-        return appInfoManager.disableDynamicIcon().then(() => {
-          result.success(null);
-        });
-      }
-      return appInfoManager.selectDynamicIcon(icons[index - 1].iconId).then(() => {
+    this.resolveIconName(index).then((name: string) => {
+      return bundleManager.setAlternateIcon(name);
+    }).then(() => {
+      result.success(null);
+    }).catch((error: BusinessError) => {
+      if (error.code === ERROR_NO_ALTERNATE_ICON_ENABLED) {
+        // 已经是默认图标，重复恢复不算失败。
         result.success(null);
-      });
-    }).catch((error: Error) => {
-      Log.e(TAG, `setAppIcon(${index}) failed: ${error.message}`);
-      result.error('set_app_icon_failed', error.message, null);
+        return;
+      }
+      Log.e(TAG, `setAppIcon(${index}) failed: ${error.code} ${error.message}`);
+      this.toast(TOAST_FAILED);
+      result.error('set_app_icon_failed', `${error.code} ${error.message}`, null);
     });
   }
 
   private getAppIconIndex(result: MethodResult): void {
-    this.queryIcons().then((icons: appInfoManager.DynamicIconInfo[]) => {
-      // 返回「当前生效图标」的 Dart 下标：找到 enabled 的那一个即 +1，
-      // 都不在生效状态就是默认图标（0）。
+    if (!isSupported()) {
+      // 读取失败不打扰用户，交给上层沿用本地偏好。
+      result.error(UNSUPPORTED_CODE, `需要 HarmonyOS API ${MIN_API_VERSION} 及以上`, null);
+      return;
+    }
+    this.queryIcons().then((icons: bundleManager.AlternateIconInfo[]) => {
       for (let i = 0; i < icons.length; i++) {
         if (icons[i].enabled) {
           result.success(i + 1);
@@ -93,21 +107,46 @@ export default class KiraAppIconChannel implements FlutterPlugin, MethodCallHand
         }
       }
       result.success(0);
-    }).catch((error: Error) => {
-      Log.e(TAG, `getAppIconIndex failed: ${error.message}`);
-      result.error('get_app_icon_failed', error.message, null);
+    }).catch((error: BusinessError) => {
+      Log.e(TAG, `getAppIconIndex failed: ${error.code} ${error.message}`);
+      result.error('get_app_icon_failed', `${error.code} ${error.message}`, null);
     });
   }
 
-  /** 查询动态图标列表，「未配置任何动态图标」当作空列表而不是错误。 */
-  private queryIcons(): Promise<appInfoManager.DynamicIconInfo[]> {
-    return appInfoManager.queryDynamicIcons().catch((error: BusinessError) => {
-      if (error.code === ERROR_NO_DYNAMIC_ICON) {
-        // 应用没在 AGC 上配任何动态图标：空列表，让上层回落到默认图标。
-        return Promise.resolve([] as appInfoManager.DynamicIconInfo[]);
-      }
-      // ArkTS 只允许抛 Error，BusinessError 需要包一层，原始 code 放进 message 保留可读性。
-      return Promise.reject(new Error(`queryDynamicIcons failed: ${error.code} ${error.message}`));
+  /** 把 Dart 下标换成备选图标名；0 或越界返回空串（恢复默认）。 */
+  private resolveIconName(index: number): Promise<string> {
+    if (index <= 0) {
+      return Promise.resolve('');
+    }
+    return this.queryIcons().then((icons: bundleManager.AlternateIconInfo[]) => {
+      return index > icons.length ? '' : icons[index - 1].iconName;
     });
   }
+
+  /** 查询备选图标列表，未配置任何备选图标时当作空列表。 */
+  private queryIcons(): Promise<bundleManager.AlternateIconInfo[]> {
+    return bundleManager.getAlternateIcons().catch((error: BusinessError) => {
+      if (error.code === ERROR_GET_ALTERNATE_ICON) {
+        return Promise.resolve([] as bundleManager.AlternateIconInfo[]);
+      }
+      return Promise.reject(new Error(`${error.code} ${error.message}`));
+    });
+  }
+
+  /** 原生 toast：Toast 挂在主窗口的 UIContext 上，拿不到窗口时静默放弃。 */
+  private toast(message: string): void {
+    const ctx = this.context;
+    if (ctx == null) {
+      return;
+    }
+    window.getLastWindow(ctx).then((win: window.Window) => {
+      win.getUIContext().getPromptAction().showToast({ message: message, duration: 2000 });
+    }).catch((error: BusinessError) => {
+      Log.w(TAG, `showToast failed: ${error.code} ${error.message}`);
+    });
+  }
+}
+
+function isSupported(): boolean {
+  return deviceInfo.sdkApiVersion >= MIN_API_VERSION;
 }

@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import 'app_platform.dart';
+
 class AppIconSwitcher {
   static const _channel = MethodChannel('io.github.caolib.kira/app_icon');
 
@@ -11,7 +13,7 @@ class AppIconSwitcher {
 
   static bool get isSupportedPlatform =>
       debugSupportedPlatformOverride ??
-      (!kIsWeb && (Platform.isAndroid || Platform.isIOS));
+      (!kIsWeb && (AppPlatform.isOhos || Platform.isAndroid || Platform.isIOS));
 
   static Future<void> setAppIcon(int index) async {
     if (!isSupportedPlatform) return;
