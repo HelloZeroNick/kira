@@ -15,7 +15,7 @@ abstract final class AppPlatform {
   static bool get isOhos =>
       !kIsWeb && defaultTargetPlatform.name == 'ohos';
 
-  static bool get supportsReaderVolumeKeys => isAndroid;
+  static bool get supportsReaderVolumeKeys => isAndroid || isOhos;
   static bool get supportsReaderCutout => isAndroid;
 
   // iOS external folders need persisted security-scoped bookmarks, not just a
