@@ -22,6 +22,7 @@
         "startWindowBackground": "$color:start_window_background",
         "startWindow": "$profile:start_window",
         "exported": true,
+        "orientation": "auto_rotation_restricted",
         "skills": [
           {
             "entities": [
