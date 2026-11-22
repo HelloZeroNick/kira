@@ -23,7 +23,7 @@ abstract final class AppPlatform {
   static bool get supportsCustomDownloadDirectory => !kIsWeb && !isIOS;
 
   // The current dynamic-color plugin has no iOS palette implementation.
-  static bool get supportsDynamicColor => !kIsWeb && !isIOS;
+  static bool get supportsDynamicColor => !kIsWeb && !isIOS && !isOhos;
 
   // Update checks are cross-platform; automatic package installation is not.
   static bool get supportsAutomaticPackageInstall => isAndroid;
