@@ -9,6 +9,7 @@ import '../l10n/app_localizations.dart';
 import '../models/download_activity_snapshot.dart';
 import '../models/user_manager.dart';
 import 'app_logger.dart';
+import 'app_platform.dart';
 import 'download_manager.dart';
 
 /// 漫画与轻小说下载共享同一个 Android 前台服务。
@@ -29,7 +30,7 @@ class DownloadForegroundController {
        _channelNameOf =
            channelName ?? ((l10n) => l10n.downloadForegroundChannel),
        _gateway = gateway ?? FlutterForegroundTaskGateway(),
-       _supported = supported ?? Platform.isAndroid;
+       _supported = supported ?? Platform.isAndroid || AppPlatform.isOhos;
 
   static List<ComicDownloadTaskInfo> _defaultTasks() => DownloadManager().tasks;
   static const Duration _minUpdateInterval = Duration(milliseconds: 800);
@@ -323,9 +324,7 @@ class FlutterForegroundTaskGateway implements DownloadForegroundGateway {
         allowWifiLock: true,
       ),
       // 鸿蒙选项
-      ohosNotificationOptions: OhosNotificationOptions(
-        isAlertOnce: true,
-      ),
+      ohosNotificationOptions: OhosNotificationOptions(isAlertOnce: true),
     );
     _optionsReady = true;
   }
@@ -354,6 +353,9 @@ class FlutterForegroundTaskGateway implements DownloadForegroundGateway {
       serviceTypes: const [ForegroundServiceTypes.dataSync],
       notificationTitle: title,
       notificationText: text,
+      // 鸿蒙插件 createNotification 对 buttons 直接取 length，null 会抛
+      // TypeError 导致长时任务申请失败；显式传空列表规避。
+      notificationButtons: const [],
     );
     if (result is ServiceRequestFailure) throw result.error;
   }
